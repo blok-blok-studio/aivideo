@@ -1,19 +1,32 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 
 interface VideoPlayerProps {
   src: string;
   poster?: string;
+  loop?: boolean;
 }
 
-export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
+export default function VideoPlayer({ src, poster, loop = true }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [buffered, setBuffered] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  // Preload the video when src changes
+  useEffect(() => {
+    setLoading(true);
+    setPlaying(false);
+    setProgress(0);
+    setBuffered(0);
+  }, [src]);
 
   const togglePlay = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || loading) return;
     if (playing) {
       videoRef.current.pause();
     } else {
@@ -27,6 +40,22 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
     const pct =
       (videoRef.current.currentTime / videoRef.current.duration) * 100;
     setProgress(pct);
+    setCurrentTime(videoRef.current.currentTime);
+  };
+
+  const handleProgress = () => {
+    if (!videoRef.current || !videoRef.current.buffered.length) return;
+    const end = videoRef.current.buffered.end(
+      videoRef.current.buffered.length - 1
+    );
+    setBuffered((end / videoRef.current.duration) * 100);
+  };
+
+  const handleCanPlay = () => {
+    setLoading(false);
+    if (videoRef.current) {
+      setDuration(videoRef.current.duration);
+    }
   };
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -36,6 +65,12 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
     videoRef.current.currentTime = pct * videoRef.current.duration;
   };
 
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
   return (
     <div className="group relative overflow-hidden rounded-card bg-bg-surface">
       <video
@@ -43,22 +78,47 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
         src={src}
         poster={poster}
         className="w-full"
-        onTimeUpdate={handleTimeUpdate}
-        onEnded={() => setPlaying(false)}
+        preload="auto"
+        loop={loop}
         playsInline
+        onTimeUpdate={handleTimeUpdate}
+        onProgress={handleProgress}
+        onCanPlayThrough={handleCanPlay}
+        onLoadedMetadata={handleCanPlay}
+        onEnded={() => { if (!loop) setPlaying(false); }}
+        onWaiting={() => setLoading(true)}
+        onPlaying={() => setLoading(false)}
       />
+
+      {/* Loading spinner */}
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+          <div className="flex flex-col items-center gap-2">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+            <span className="text-xs text-white/70">Loading video…</span>
+          </div>
+        </div>
+      )}
 
       {/* Controls overlay */}
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
-        {/* Progress bar */}
+        {/* Progress bar with buffer indicator */}
         <div
-          className="mb-2 h-1 cursor-pointer rounded-full bg-white/20"
+          className="mb-2 h-1.5 cursor-pointer rounded-full bg-white/20"
           onClick={handleSeek}
         >
+          {/* Buffered */}
           <div
-            className="h-full rounded-full bg-accent transition-all"
-            style={{ width: `${progress}%` }}
+            className="absolute h-1.5 rounded-full bg-white/15"
+            style={{ width: `${buffered}%` }}
           />
+          {/* Progress */}
+          <div
+            className="relative h-full rounded-full bg-accent transition-all"
+            style={{ width: `${progress}%` }}
+          >
+            <div className="absolute -right-1 -top-0.5 h-2.5 w-2.5 rounded-full bg-accent opacity-0 shadow-sm group-hover:opacity-100" />
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -77,11 +137,18 @@ export default function VideoPlayer({ src, poster }: VideoPlayerProps) {
               </svg>
             )}
           </button>
+
+          {/* Time display */}
+          {duration > 0 && (
+            <span className="font-mono text-[10px] text-white/60">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Play button overlay when not playing */}
-      {!playing && (
+      {/* Play button overlay when not playing and not loading */}
+      {!playing && !loading && (
         <button
           onClick={togglePlay}
           className="absolute inset-0 flex items-center justify-center bg-black/20 transition-colors hover:bg-black/30"
