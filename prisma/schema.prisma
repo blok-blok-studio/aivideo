@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Job {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  section       String   // "motion-tracking" | "motion-design"
+  modelId       String
+  modelName     String
+  status        String   // "queued" | "processing" | "complete" | "failed"
+  falRequestId  String?
+  inputParams   Json
+  outputUrl     String?
+  thumbnailUrl  String?
+  durationSec   Float?
+  estimatedCost Float?
+  saved         Boolean  @default(false)
+  errorMsg      String?
+  clientIp      String?
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([section, createdAt])
+}
+
+model VoiceJob {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  type           String   // "generate" | "match" | "clone"
+  script         String?
+  voiceId        String?
+  voiceName      String?
+  clonedFrom     String?
+  outputAudioUrl String?
+  mergedVideoUrl String?
+  linkedJobId    String?
+  status         String   // "queued" | "processing" | "complete" | "failed"
+  estimatedCost  Float?
+  errorMsg       String?
+  clientIp       String?
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model CustomVoice {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  name           String
+  elevenlabsId   String
+  sourceAudioUrl String
+  method         String   // "instant" | "professional"
+}
