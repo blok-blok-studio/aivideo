@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     // Submit to fal.ai
     try {
-      const requestId = await submitFalJob(model_id, {
+      const { request_id, response_url } = await submitFalJob(model_id, {
         image_url,
         video_url,
         character_orientation,
@@ -42,7 +42,11 @@ export async function POST(req: NextRequest) {
 
       await prisma.job.update({
         where: { id: job.id },
-        data: { status: "processing", falRequestId: requestId },
+        data: {
+          status: "processing",
+          falRequestId: request_id,
+          falResponseUrl: response_url || null,
+        },
       });
     } catch (falErr) {
       await prisma.job.update({

@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Job, JobStatus, VoiceJobType } from "@/lib/types";
 
 export function useJobPolling(jobId: string | null) {
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<(Job & { falStatus?: string; falStatusError?: string }) | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const pollErrorCount = useRef(0);
 
   const poll = useCallback(async () => {
     if (!jobId) return;
@@ -15,18 +16,41 @@ export function useJobPolling(jobId: string | null) {
       if (res.ok) {
         const data = await res.json();
         setJob(data);
+        pollErrorCount.current = 0;
         if (data.status === "complete" || data.status === "failed") {
           if (intervalRef.current) clearInterval(intervalRef.current);
         }
+      } else {
+        pollErrorCount.current++;
+        console.error(`Poll error ${pollErrorCount.current}: HTTP ${res.status}`);
+        // After 20 consecutive poll failures (60s), stop polling
+        if (pollErrorCount.current >= 20 && intervalRef.current) {
+          clearInterval(intervalRef.current);
+          setJob((prev) =>
+            prev
+              ? { ...prev, status: "failed" as JobStatus, errorMsg: `Polling failed after ${pollErrorCount.current} attempts (HTTP ${res.status})` }
+              : null
+          );
+        }
       }
-    } catch {
-      // ignore polling errors
+    } catch (err) {
+      pollErrorCount.current++;
+      console.error(`Poll network error ${pollErrorCount.current}:`, err);
+      if (pollErrorCount.current >= 20 && intervalRef.current) {
+        clearInterval(intervalRef.current);
+        setJob((prev) =>
+          prev
+            ? { ...prev, status: "failed" as JobStatus, errorMsg: "Network error during polling" }
+            : null
+        );
+      }
     }
   }, [jobId]);
 
   useEffect(() => {
     if (!jobId) return;
     setElapsed(0);
+    pollErrorCount.current = 0;
     poll();
     intervalRef.current = setInterval(() => {
       poll();
@@ -46,14 +70,11 @@ export function useFileUpload() {
   const upload = async (file: File): Promise<string> => {
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Upload failed" }));
-        throw new Error(err.error || "Upload failed");
-      }
-      const { url } = await res.json();
+      // Import the client-side fal instance (uses proxy for auth,
+      // but uploads directly to fal.ai CDN via presigned URL —
+      // bypasses Vercel's 4.5MB body size limit)
+      const { falClient } = await import("@/lib/fal-client");
+      const url = await falClient.storage.upload(file);
       return url;
     } finally {
       setUploading(false);

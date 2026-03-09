@@ -13,9 +13,24 @@ import {
   JobStatus,
 } from "@/lib/types";
 import { clsx } from "clsx";
-import { useJobPolling, useFileUpload } from "@/hooks/useJobPolling";
+import { useJobPolling } from "@/hooks/useJobPolling";
 
-type ProgressStep = "idle" | "uploading" | "submitting" | "processing" | "complete" | "error";
+type ProgressStep =
+  | "idle"
+  | "loading-sdk"
+  | "uploading-image"
+  | "uploading-video"
+  | "submitting"
+  | "processing"
+  | "complete"
+  | "error";
+
+interface StepLog {
+  step: string;
+  status: "pending" | "running" | "done" | "failed";
+  detail?: string;
+  time?: number;
+}
 
 export default function MotionTrackingSection() {
   // Inputs
@@ -36,8 +51,8 @@ export default function MotionTrackingSection() {
   const [loading, setLoading] = useState(false);
   const [progressStep, setProgressStep] = useState<ProgressStep>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [stepLogs, setStepLogs] = useState<StepLog[]>([]);
   const { job, elapsed } = useJobPolling(jobId);
-  const { upload } = useFileUpload();
 
   const estimatedCost = useMemo(
     () => estimateMotionTrackingCost(videoDuration, selectedModel.costPer5s),
@@ -47,13 +62,14 @@ export default function MotionTrackingSection() {
   const canGenerate = drivingVideo && characterImage && !loading;
 
   // Update progress based on job polling
-  const currentStep = job?.status === "complete"
-    ? "complete"
-    : job?.status === "failed"
-    ? "error"
-    : job?.status === "processing"
-    ? "processing"
-    : progressStep;
+  const currentStep =
+    job?.status === "complete"
+      ? "complete"
+      : job?.status === "failed"
+      ? "error"
+      : job?.status === "processing"
+      ? "processing"
+      : progressStep;
 
   const handleDrivingVideo = useCallback((file: File) => {
     setDrivingVideo(file);
@@ -74,55 +90,220 @@ export default function MotionTrackingSection() {
     setCharacterPreview(URL.createObjectURL(file));
   }, []);
 
+  // Helper to update a specific step log
+  const updateLog = (
+    logs: StepLog[],
+    step: string,
+    update: Partial<StepLog>
+  ): StepLog[] => logs.map((l) => (l.step === step ? { ...l, ...update } : l));
+
   const handleGenerate = async () => {
     if (!drivingVideo || !characterImage) return;
     setLoading(true);
     setJobId(null);
     setErrorMessage(null);
-    setProgressStep("uploading");
+
+    const initialLogs: StepLog[] = [
+      { step: "load-sdk", status: "pending", detail: "Load fal.ai SDK" },
+      {
+        step: "upload-image",
+        status: "pending",
+        detail: `Upload image (${(characterImage.size / 1024 / 1024).toFixed(1)}MB)`,
+      },
+      {
+        step: "upload-video",
+        status: "pending",
+        detail: `Upload video (${(drivingVideo.size / 1024 / 1024).toFixed(1)}MB)`,
+      },
+      { step: "submit-job", status: "pending", detail: "Submit to AI model" },
+      { step: "process", status: "pending", detail: "Generate video" },
+    ];
+    setStepLogs(initialLogs);
+    let logs = initialLogs;
 
     try {
-      // Step 1: Upload files to fal.ai CDN
-      const [imageUrl, videoUrl] = await Promise.all([
-        upload(characterImage),
-        upload(drivingVideo),
-      ]);
+      // ─── Step 1: Load the fal.ai client SDK ───
+      setProgressStep("loading-sdk");
+      logs = updateLog(logs, "load-sdk", { status: "running" });
+      setStepLogs([...logs]);
+      const startSdk = Date.now();
 
-      // Step 2: Submit generation job
-      setProgressStep("submitting");
-      const res = await fetch("/api/generate/motion-tracking", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image_url: imageUrl,
-          video_url: videoUrl,
-          model_id: selectedModel.modelId,
-          character_orientation: orientation,
-          prompt: prompt || undefined,
-          keep_original_sound: keepAudio,
-        }),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
+      let falClient: Awaited<
+        typeof import("@/lib/fal-client")
+      >["falClient"];
+      try {
+        const mod = await import("@/lib/fal-client");
+        falClient = mod.falClient;
+      } catch (sdkErr) {
         throw new Error(
-          errData.error || errData.details?.[0]?.message || `Server error (${res.status})`
+          `SDK load failed: ${sdkErr instanceof Error ? sdkErr.message : String(sdkErr)}`
         );
       }
 
+      logs = updateLog(logs, "load-sdk", {
+        status: "done",
+        time: Date.now() - startSdk,
+        detail: "fal.ai SDK loaded",
+      });
+      setStepLogs([...logs]);
+
+      // ─── Step 2: Upload character image ───
+      setProgressStep("uploading-image");
+      logs = updateLog(logs, "upload-image", { status: "running" });
+      setStepLogs([...logs]);
+      const startImg = Date.now();
+
+      let imageUrl: string;
+      try {
+        imageUrl = await falClient.storage.upload(characterImage);
+      } catch (imgErr) {
+        throw new Error(
+          `Image upload failed: ${imgErr instanceof Error ? imgErr.message : String(imgErr)}`
+        );
+      }
+
+      logs = updateLog(logs, "upload-image", {
+        status: "done",
+        time: Date.now() - startImg,
+        detail: `Image uploaded → ${imageUrl.slice(0, 60)}…`,
+      });
+      setStepLogs([...logs]);
+
+      // ─── Step 3: Upload driving video ───
+      setProgressStep("uploading-video");
+      logs = updateLog(logs, "upload-video", { status: "running" });
+      setStepLogs([...logs]);
+      const startVid = Date.now();
+
+      let videoUrl: string;
+      try {
+        videoUrl = await falClient.storage.upload(drivingVideo);
+      } catch (vidErr) {
+        throw new Error(
+          `Video upload failed: ${vidErr instanceof Error ? vidErr.message : String(vidErr)}`
+        );
+      }
+
+      logs = updateLog(logs, "upload-video", {
+        status: "done",
+        time: Date.now() - startVid,
+        detail: `Video uploaded → ${videoUrl.slice(0, 60)}…`,
+      });
+      setStepLogs([...logs]);
+
+      // ─── Step 4: Submit generation job to API ───
+      setProgressStep("submitting");
+      logs = updateLog(logs, "submit-job", { status: "running" });
+      setStepLogs([...logs]);
+      const startSubmit = Date.now();
+
+      const payload = {
+        image_url: imageUrl,
+        video_url: videoUrl,
+        model_id: selectedModel.modelId,
+        character_orientation: orientation,
+        prompt: prompt || undefined,
+        keep_original_sound: keepAudio,
+      };
+
+      logs = updateLog(logs, "submit-job", {
+        status: "running",
+        detail: `POST /api/generate/motion-tracking — model: ${selectedModel.modelId}`,
+      });
+      setStepLogs([...logs]);
+
+      let res: Response;
+      try {
+        res = await fetch("/api/generate/motion-tracking", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } catch (fetchErr) {
+        throw new Error(
+          `API request failed (network): ${fetchErr instanceof Error ? fetchErr.message : String(fetchErr)}`
+        );
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const detail =
+          errData.error ||
+          errData.details?.[0]?.message ||
+          `HTTP ${res.status}`;
+        throw new Error(`API error (${res.status}): ${detail}`);
+      }
+
       const data = await res.json();
+
+      if (!data.jobId) {
+        throw new Error(
+          `API returned no jobId. Response: ${JSON.stringify(data).slice(0, 200)}`
+        );
+      }
+
+      logs = updateLog(logs, "submit-job", {
+        status: "done",
+        time: Date.now() - startSubmit,
+        detail: `Job submitted → ${data.jobId}`,
+      });
+      setStepLogs([...logs]);
+
+      // ─── Step 5: Start polling ───
       setJobId(data.jobId);
       setProgressStep("processing");
+      logs = updateLog(logs, "process", {
+        status: "running",
+        detail: `Polling job ${data.jobId}…`,
+      });
+      setStepLogs([...logs]);
     } catch (err) {
       console.error("Generation error:", err);
       setProgressStep("error");
-      setErrorMessage(
-        err instanceof Error ? err.message : "Something went wrong. Please try again."
+
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Something went wrong. Please try again.";
+      setErrorMessage(message);
+
+      // Mark the currently running step as failed
+      logs = logs.map((l) =>
+        l.status === "running" ? { ...l, status: "failed" as const, detail: message } : l
       );
+      setStepLogs([...logs]);
     } finally {
       setLoading(false);
     }
   };
+
+  // When job completes or fails from polling, update the process step log
+  const jobWithStatus = job as (typeof job) & { falStatus?: string; falStatusError?: string } | null;
+  const displayLogs = stepLogs.map((l) => {
+    if (l.step === "process" && jobWithStatus?.status === "complete") {
+      return { ...l, status: "done" as const, detail: "Video generated successfully" };
+    }
+    if (l.step === "process" && jobWithStatus?.status === "failed") {
+      return {
+        ...l,
+        status: "failed" as const,
+        detail: jobWithStatus.errorMsg || "Generation failed on fal.ai side",
+      };
+    }
+    if (l.step === "process" && jobWithStatus?.falStatus) {
+      return {
+        ...l,
+        detail: `fal.ai status: ${jobWithStatus.falStatus}${jobWithStatus.falStatusError ? ` (error: ${jobWithStatus.falStatusError})` : ""}`,
+      };
+    }
+    if (l.step === "process" && jobWithStatus?.falStatusError) {
+      return {
+        ...l,
+        detail: `Polling error: ${jobWithStatus.falStatusError}`,
+      };
+    }
+    return l;
+  });
 
   return (
     <section className="mx-auto max-w-7xl px-6 py-10">
@@ -275,7 +456,8 @@ export default function MotionTrackingSection() {
             </div>
             {videoDuration > 0 && (
               <p className="mt-1 font-mono text-[10px] text-text-muted">
-                {videoDuration}s video × ${selectedModel.costPer5s.toFixed(2)}/5s
+                {videoDuration}s video × ${selectedModel.costPer5s.toFixed(2)}
+                /5s
               </p>
             )}
           </div>
@@ -284,78 +466,118 @@ export default function MotionTrackingSection() {
             label="TRANSFER MOTION"
             loading={loading || currentStep === "processing"}
             loadingLabel={
-              currentStep === "uploading"
-                ? "Uploading files..."
+              currentStep === "loading-sdk"
+                ? "Loading SDK..."
+                : currentStep === "uploading-image"
+                ? "Uploading image..."
+                : currentStep === "uploading-video"
+                ? "Uploading video..."
                 : currentStep === "submitting"
                 ? "Submitting job..."
-                : "Transferring..."
+                : "Generating..."
             }
             disabled={!canGenerate}
             onClick={handleGenerate}
           />
 
-          {/* Progress Steps */}
-          {currentStep !== "idle" && currentStep !== "error" && (
+          {/* ── Detailed Step Log ── */}
+          {displayLogs.length > 0 && currentStep !== "idle" && (
             <div className="rounded-card border border-border-subtle bg-bg-surface p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">
-                  PROGRESS
+                  PIPELINE STATUS
                 </span>
                 {currentStep === "processing" && elapsed > 0 && (
                   <span className="font-mono text-[10px] text-text-muted">
-                    {Math.floor(elapsed / 60)}:{(elapsed % 60).toString().padStart(2, "0")} elapsed
+                    {Math.floor(elapsed / 60)}:
+                    {(elapsed % 60).toString().padStart(2, "0")} elapsed
                   </span>
                 )}
               </div>
 
-              {/* Step indicators */}
               <div className="space-y-2">
-                {[
-                  { key: "uploading", label: "Uploading files to CDN" },
-                  { key: "submitting", label: "Submitting to AI model" },
-                  { key: "processing", label: "Generating video" },
-                  { key: "complete", label: "Done" },
-                ].map((step) => {
-                  const steps: ProgressStep[] = ["uploading", "submitting", "processing", "complete"];
-                  const currentIdx = steps.indexOf(currentStep);
-                  const stepIdx = steps.indexOf(step.key as ProgressStep);
-                  const isDone = stepIdx < currentIdx;
-                  const isActive = step.key === currentStep;
-
-                  return (
-                    <div key={step.key} className="flex items-center gap-3">
-                      <div className={clsx(
-                        "flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold",
-                        isDone
-                          ? "bg-green-500/20 text-green-500"
-                          : isActive
-                          ? "bg-accent/20 text-accent"
-                          : "bg-bg-input text-text-muted"
-                      )}>
-                        {isDone ? (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                {displayLogs.map((log, idx) => (
+                  <div key={log.step}>
+                    {/* Step header */}
+                    <div className="flex items-center gap-2">
+                      {/* Status icon */}
+                      <div
+                        className={clsx(
+                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold",
+                          log.status === "done"
+                            ? "bg-green-500/20 text-green-500"
+                            : log.status === "failed"
+                            ? "bg-red-500/20 text-red-400"
+                            : log.status === "running"
+                            ? "bg-accent/20 text-accent"
+                            : "bg-bg-input text-text-muted"
+                        )}
+                      >
+                        {log.status === "done" ? (
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                          >
                             <polyline points="20 6 9 17 4 12" />
                           </svg>
+                        ) : log.status === "failed" ? (
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                          >
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
                         ) : (
-                          stepIdx + 1
+                          idx + 1
                         )}
                       </div>
-                      <span className={clsx(
-                        "text-xs",
-                        isDone
-                          ? "text-green-500"
-                          : isActive
-                          ? "text-text-primary"
-                          : "text-text-muted"
-                      )}>
-                        {step.label}
-                        {isActive && currentStep === "processing" && (
+
+                      {/* Step name */}
+                      <span
+                        className={clsx(
+                          "text-xs font-medium",
+                          log.status === "done"
+                            ? "text-green-500"
+                            : log.status === "failed"
+                            ? "text-red-400"
+                            : log.status === "running"
+                            ? "text-text-primary"
+                            : "text-text-muted"
+                        )}
+                      >
+                        {log.detail || log.step}
+                        {log.status === "running" && (
                           <span className="ml-2 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
                         )}
                       </span>
+
+                      {/* Timing */}
+                      {log.time !== undefined && (
+                        <span className="ml-auto font-mono text-[10px] text-text-muted">
+                          {log.time < 1000
+                            ? `${log.time}ms`
+                            : `${(log.time / 1000).toFixed(1)}s`}
+                        </span>
+                      )}
                     </div>
-                  );
-                })}
+
+                    {/* Error detail for failed steps */}
+                    {log.status === "failed" && (
+                      <div className="ml-7 mt-1 rounded bg-red-500/5 px-3 py-2 font-mono text-[11px] text-red-400/80 break-all">
+                        {log.detail}
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
 
               {/* Progress bar for processing */}
@@ -372,18 +594,30 @@ export default function MotionTrackingSection() {
             </div>
           )}
 
-          {/* Error Display */}
+          {/* Error summary with retry */}
           {currentStep === "error" && errorMessage && (
             <div className="rounded-card border border-red-500/30 bg-red-500/5 p-4">
               <div className="flex items-start gap-3">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" className="mt-0.5 shrink-0">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#ef4444"
+                  strokeWidth="2"
+                  className="mt-0.5 shrink-0"
+                >
                   <circle cx="12" cy="12" r="10" />
                   <line x1="15" y1="9" x2="9" y2="15" />
                   <line x1="9" y1="9" x2="15" y2="15" />
                 </svg>
-                <div>
-                  <p className="text-sm font-medium text-red-400">Generation failed</p>
-                  <p className="mt-1 text-xs text-red-400/70">{errorMessage}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-red-400">
+                    Generation failed
+                  </p>
+                  <p className="mt-1 text-xs text-red-400/70 break-all">
+                    {errorMessage}
+                  </p>
                   <button
                     onClick={handleGenerate}
                     className="mt-3 rounded-input bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"
@@ -409,14 +643,27 @@ export default function MotionTrackingSection() {
           {job && job.status === "failed" && !errorMessage && (
             <div className="rounded-card border border-red-500/30 bg-red-500/5 p-4">
               <div className="flex items-start gap-3">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" className="mt-0.5 shrink-0">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#ef4444"
+                  strokeWidth="2"
+                  className="mt-0.5 shrink-0"
+                >
                   <circle cx="12" cy="12" r="10" />
                   <line x1="15" y1="9" x2="9" y2="15" />
                   <line x1="9" y1="9" x2="15" y2="15" />
                 </svg>
                 <div>
-                  <p className="text-sm font-medium text-red-400">Generation failed</p>
-                  <p className="mt-1 text-xs text-red-400/70">{job.errorMsg || "The AI model encountered an error processing your request."}</p>
+                  <p className="text-sm font-medium text-red-400">
+                    Generation failed
+                  </p>
+                  <p className="mt-1 text-xs text-red-400/70">
+                    {job.errorMsg ||
+                      "The AI model encountered an error processing your request."}
+                  </p>
                   <button
                     onClick={handleGenerate}
                     className="mt-3 rounded-input bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 transition-colors hover:bg-red-500/20"

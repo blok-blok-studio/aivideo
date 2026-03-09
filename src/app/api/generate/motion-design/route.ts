@@ -40,11 +40,15 @@ export async function POST(req: NextRequest) {
       if (cfg_scale !== undefined) input.cfg_scale = cfg_scale;
       if (seed !== undefined) input.seed = seed;
 
-      const requestId = await submitFalJob(model_id, input);
+      const { request_id, response_url } = await submitFalJob(model_id, input);
 
       await prisma.job.update({
         where: { id: job.id },
-        data: { status: "processing", falRequestId: requestId },
+        data: {
+          status: "processing",
+          falRequestId: request_id,
+          falResponseUrl: response_url || null,
+        },
       });
     } catch (falErr) {
       await prisma.job.update({

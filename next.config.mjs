@@ -32,7 +32,7 @@ const nextConfig = {
               "img-src 'self' data: https:",
               "media-src 'self' data: https:",
               "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://rest.fal.ai https://api.elevenlabs.io",
+              "connect-src 'self' https:",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

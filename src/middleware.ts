@@ -168,8 +168,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── Authentication (Bearer token) ──
+  // Skip auth for the fal proxy route (called from browser, handles its own auth)
+  const skipAuth = pathname.startsWith("/api/fal/proxy");
   const serverApiKey = process.env.SERVER_API_KEY;
-  if (serverApiKey) {
+  if (serverApiKey && !skipAuth) {
     const authHeader = request.headers.get("authorization");
     const providedKey = authHeader?.replace("Bearer ", "");
     if (providedKey !== serverApiKey) {

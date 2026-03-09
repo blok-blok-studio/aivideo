@@ -15,6 +15,7 @@ model Job {
   modelName     String
   status        String   // "queued" | "processing" | "complete" | "failed"
   falRequestId  String?
+  falResponseUrl String?
   inputParams   Json
   outputUrl     String?
   thumbnailUrl  String?
