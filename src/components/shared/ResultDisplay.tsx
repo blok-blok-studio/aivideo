@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import VideoPlayer from "./VideoPlayer";
 import JobStatusPill from "./JobStatusPill";
 import { JobStatus } from "@/lib/types";
@@ -13,7 +14,7 @@ interface ResultDisplayProps {
   onSave?: () => void;
 }
 
-export default function ResultDisplay({
+export default memo(function ResultDisplay({
   status,
   outputUrl,
   outputType = "video",
@@ -72,24 +73,24 @@ export default function ResultDisplay({
           </div>
         )}
 
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           <a
             href={outputUrl}
             download
-            className="flex-1 rounded-input border border-border-subtle px-3 py-2 text-center text-xs text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary"
+            className="flex-1 rounded-input border border-border-subtle px-3 py-2.5 text-center text-xs text-text-secondary hover:border-border-hover hover:text-text-primary"
           >
             Download
           </a>
           <button
             onClick={() => navigator.clipboard.writeText(outputUrl)}
-            className="flex-1 rounded-input border border-border-subtle px-3 py-2 text-xs text-text-secondary transition-colors hover:border-border-hover hover:text-text-primary"
+            className="flex-1 rounded-input border border-border-subtle px-3 py-2.5 text-xs text-text-secondary hover:border-border-hover hover:text-text-primary"
           >
             Copy URL
           </button>
           {onSave && (
             <button
               onClick={onSave}
-              className="flex-1 rounded-input bg-accent/10 px-3 py-2 text-xs text-accent transition-colors hover:bg-accent/20"
+              className="flex-1 rounded-input bg-accent/10 px-3 py-2.5 text-xs text-accent hover:bg-accent/20"
             >
               Save to Gallery
             </button>
@@ -100,4 +101,4 @@ export default function ResultDisplay({
   }
 
   return null;
-}
+});

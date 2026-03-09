@@ -25,10 +25,10 @@ export default function GalleryModal({ open, onClose }: GalleryModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-6">
-      <div className="relative max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-card border border-border-subtle bg-bg">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-0 sm:items-center sm:p-4 md:p-6">
+      <div className="relative max-h-[95vh] w-full max-w-6xl overflow-y-auto rounded-t-panel border border-border-subtle bg-bg sm:max-h-[90vh] sm:rounded-panel">
         {/* Header */}
-        <div className="sticky top-0 flex items-center justify-between border-b border-border-subtle bg-bg/90 px-6 py-4 backdrop-blur-sm">
+        <div className="sticky top-0 flex items-center justify-between border-b border-border-subtle bg-bg/90 px-4 py-3 backdrop-blur-sm md:px-6 md:py-4">
           <h3 className="font-display text-lg font-bold text-text-primary">
             Output Gallery
           </h3>
@@ -56,7 +56,7 @@ export default function GalleryModal({ open, onClose }: GalleryModalProps) {
         </div>
 
         {/* Grid */}
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           {savedJobs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-text-muted">
               <svg

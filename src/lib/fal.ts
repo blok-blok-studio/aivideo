@@ -43,6 +43,7 @@ export async function getFalResult(
           Authorization: `Key ${apiKey}`,
           Accept: "application/json",
         },
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (response.ok) {
@@ -84,6 +85,7 @@ export async function getFalResult(
           Authorization: `Key ${apiKey}`,
           Accept: "application/json",
         },
+        signal: AbortSignal.timeout(30_000),
       });
 
       if (response.ok) {

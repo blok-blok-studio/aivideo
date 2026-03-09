@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { clsx } from "clsx";
 import { JobStatus } from "@/lib/types";
 
@@ -30,7 +31,7 @@ interface JobStatusPillProps {
   estimatedTime?: string;
 }
 
-export default function JobStatusPill({
+export default memo(function JobStatusPill({
   status,
   estimatedTime,
 }: JobStatusPillProps) {
@@ -54,4 +55,4 @@ export default function JobStatusPill({
       )}
     </span>
   );
-}
+});

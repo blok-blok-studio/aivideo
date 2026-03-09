@@ -58,11 +58,11 @@ export default function FileUploadZone({
         <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">
           {label}
         </label>
-        <div className="relative overflow-hidden rounded-card border border-border-subtle bg-bg-surface">
+        <div className="relative overflow-hidden rounded-card border border-border-subtle bg-bg-surface shadow-card">
           {previewType === "video" ? (
             <video
               src={preview}
-              className="h-48 w-full object-cover"
+              className="h-40 w-full object-cover sm:h-48"
               controls
               muted
             />
@@ -70,13 +70,13 @@ export default function FileUploadZone({
             <img
               src={preview}
               alt="Preview"
-              className="h-48 w-full object-cover"
+              className="h-40 w-full object-cover sm:h-48"
             />
           )}
           {onClear && (
             <button
               onClick={onClear}
-              className="absolute right-2 top-2 rounded-full bg-bg/80 p-1.5 text-text-secondary transition-colors hover:text-text-primary"
+              className="absolute right-2 top-2 rounded-full bg-bg/80 p-2 text-text-secondary hover:text-text-primary"
             >
               <svg
                 width="14"
@@ -131,7 +131,7 @@ export default function FileUploadZone({
         onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
         className={clsx(
-          "upload-zone flex cursor-pointer flex-col items-center justify-center rounded-card bg-bg-surface px-6 py-10 text-center transition-all",
+          "upload-zone flex cursor-pointer flex-col items-center justify-center rounded-card bg-bg-surface px-4 py-8 text-center transition-all sm:px-6 sm:py-10",
           dragOver && "drag-over"
         )}
       >

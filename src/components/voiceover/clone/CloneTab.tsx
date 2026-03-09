@@ -71,7 +71,7 @@ export default function CloneTab() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       {/* Voice Sample Upload */}
       <FileUploadZone
         label="VOICE SAMPLE"
@@ -141,7 +141,7 @@ export default function CloneTab() {
         <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">
           CLONE METHOD
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
           {(
             [
               {
@@ -160,7 +160,7 @@ export default function CloneTab() {
               key={m.key}
               onClick={() => setMethod(m.key)}
               className={clsx(
-                "flex-1 rounded-input px-4 py-2.5 text-left transition-all",
+                "flex-1 rounded-card px-4 py-3 text-left transition-all",
                 method === m.key
                   ? "bg-accent/10 text-accent ring-1 ring-accent/30"
                   : "bg-bg-input text-text-secondary hover:text-text-primary"

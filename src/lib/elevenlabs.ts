@@ -30,6 +30,7 @@ export async function generateSpeech(params: {
       model_id: modelId,
       voice_settings: { stability, similarity_boost: similarityBoost },
     }),
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!res.ok) {
@@ -52,6 +53,7 @@ export async function instantClone(params: {
     method: "POST",
     headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY || "" },
     body: formData,
+    signal: AbortSignal.timeout(60_000),
   });
 
   if (!res.ok) {
@@ -66,6 +68,7 @@ export async function instantClone(params: {
 export async function listVoices() {
   const res = await fetch(`${BASE_URL}/voices`, {
     headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY || "" },
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error("Failed to fetch voices");
   return res.json();
@@ -75,6 +78,7 @@ export async function deleteVoice(voiceId: string) {
   const res = await fetch(`${BASE_URL}/voices/${voiceId}`, {
     method: "DELETE",
     headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY || "" },
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error("Failed to delete voice");
 }

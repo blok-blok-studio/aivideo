@@ -39,8 +39,14 @@ const config: Config = {
         mono: ['"Space Mono"', "monospace"],
       },
       borderRadius: {
-        card: "6px",
-        input: "4px",
+        card: "12px",
+        input: "8px",
+        panel: "16px",
+      },
+      boxShadow: {
+        card: "0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2)",
+        "card-hover": "0 4px 12px rgba(0,0,0,0.4), 0 2px 4px rgba(0,0,0,0.3)",
+        glow: "0 0 20px rgba(255,107,53,0.15)",
       },
       backdropBlur: {
         header: "20px",

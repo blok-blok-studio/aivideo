@@ -25,10 +25,10 @@ export default function GenerateButton({
         onClick={onClick}
         disabled={disabled || loading}
         className={clsx(
-          "w-full rounded-card px-6 py-3 font-display text-sm font-semibold uppercase tracking-wider transition-all",
+          "w-full rounded-card px-6 py-3.5 font-display text-sm font-semibold uppercase tracking-wider transition-all",
           disabled || loading
             ? "cursor-not-allowed bg-bg-input text-text-muted"
-            : "bg-accent text-white hover:bg-accent-hover active:scale-[0.99]"
+            : "bg-accent text-white shadow-glow hover:bg-accent-hover hover:shadow-[0_0_30px_rgba(255,107,53,0.25)] active:scale-[0.98]"
         )}
       >
         {loading ? (

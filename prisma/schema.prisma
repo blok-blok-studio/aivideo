@@ -7,13 +7,42 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Authentication ──
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String?
+  role          String    @default("member") // "owner" | "admin" | "member"
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  jobs          Job[]
+  voiceJobs     VoiceJob[]
+  customVoices  CustomVoice[]
+  projects      Project[]
+  templates     Template[]
+  batchJobs     BatchJob[]
+  usageLogs     UsageLog[]
+  apiKeys       ApiKey[]
+  webhooks      Webhook[]
+  schedules     Schedule[]
+  projectMembers ProjectMember[]
+  comments      Comment[]
+
+  @@index([email])
+}
+
+// ── Video Generation ──
+
 model Job {
-  id            String   @id @default(cuid())
-  createdAt     DateTime @default(now())
-  section       String   // "motion-tracking" | "motion-design"
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+  section       String    // "motion-tracking" | "motion-design"
   modelId       String
   modelName     String
-  status        String   // "queued" | "processing" | "complete" | "failed"
+  status        String    // "queued" | "processing" | "complete" | "failed"
   falRequestId  String?
   falResponseUrl String?
   inputParams   Json
@@ -21,14 +50,28 @@ model Job {
   thumbnailUrl  String?
   durationSec   Float?
   estimatedCost Float?
-  saved         Boolean  @default(false)
+  saved         Boolean   @default(false)
   errorMsg      String?
   clientIp      String?
+
+  // Relations (nullable for backward compat)
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id])
+  projectId     String?
+  project       Project?  @relation(fields: [projectId], references: [id])
+  batchItem     BatchItem?
+  comments      Comment[]
 
   @@index([status])
   @@index([createdAt])
   @@index([section, createdAt])
+  @@index([saved, createdAt])
+  @@index([falRequestId])
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
 }
+
+// ── Voice Generation ──
 
 model VoiceJob {
   id             String   @id @default(cuid())
@@ -46,15 +89,205 @@ model VoiceJob {
   errorMsg       String?
   clientIp       String?
 
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+  projectId      String?
+  project        Project? @relation(fields: [projectId], references: [id])
+
   @@index([status])
   @@index([createdAt])
+  @@index([type, createdAt])
+  @@index([userId, createdAt])
 }
 
 model CustomVoice {
   id             String   @id @default(cuid())
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   name           String
   elevenlabsId   String
   sourceAudioUrl String
   method         String   // "instant" | "professional"
+
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ── Projects ──
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  color       String?  // hex color for UI
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  jobs        Job[]
+  voiceJobs   VoiceJob[]
+  batchJobs   BatchJob[]
+  members     ProjectMember[]
+
+  @@index([userId, updatedAt])
+}
+
+// ── Templates ──
+
+model Template {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  section     String   // "motion-tracking" | "motion-design" | "voiceover"
+  settings    Json     // Full configuration (model, params, etc.)
+  isGlobal    Boolean  @default(false)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  schedules   Schedule[]
+
+  @@index([userId, section])
+  @@index([isGlobal, section])
+}
+
+// ── Batch Processing ──
+
+model BatchJob {
+  id             String   @id @default(cuid())
+  name           String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  projectId      String?
+  project        Project? @relation(fields: [projectId], references: [id])
+  section        String   // "motion-design" | "motion-tracking"
+  status         String   @default("pending") // "pending" | "running" | "complete" | "partial" | "failed"
+  totalCount     Int
+  completedCount Int      @default(0)
+  failedCount    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items          BatchItem[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model BatchItem {
+  id          String   @id @default(cuid())
+  batchId     String
+  batch       BatchJob @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  jobId       String?  @unique
+  job         Job?     @relation(fields: [jobId], references: [id])
+  inputParams Json
+  status      String   @default("pending") // "pending" | "processing" | "complete" | "failed"
+  sortOrder   Int
+
+  @@index([batchId, status])
+}
+
+// ── Analytics ──
+
+model UsageLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // "generation" | "voiceover" | "clone" | "match" | "caption" | "script"
+  section   String   // "motion-tracking" | "motion-design" | "voiceover"
+  modelId   String?
+  modelName String?
+  cost      Float    @default(0)
+  status    String   // "success" | "failed"
+  metadata  Json?    // Extra details (duration, resolution, etc.)
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([createdAt])
+}
+
+// ── Public API ──
+
+model ApiKey {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String    // "Production Key", "Test Key"
+  prefix    String    // "bb_live_abc1" — first 12 chars shown to user
+  keyHash   String    @unique // SHA-256 hash of the full key
+  lastUsed  DateTime?
+  expiresAt DateTime?
+  revoked   Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  @@index([keyHash])
+  @@index([userId])
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  url       String
+  events    String[] // ["job.complete", "job.failed", "batch.complete"]
+  secret    String   // HMAC signing secret
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ── Scheduling ──
+
+model Schedule {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  templateId  String
+  template    Template  @relation(fields: [templateId], references: [id])
+  name        String
+  cron        String    // Cron expression (e.g., "0 9 * * 1-5")
+  active      Boolean   @default(true)
+  nextRunAt   DateTime?
+  lastRunAt   DateTime?
+  lastJobId   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([active, nextRunAt])
+  @@index([userId])
+}
+
+// ── Collaboration ──
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("viewer") // "viewer" | "editor" | "admin"
+  invitedBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jobId, createdAt])
 }

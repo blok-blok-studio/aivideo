@@ -139,14 +139,18 @@ export async function middleware(request: NextRequest) {
 
   // ── CORS enforcement ──
   const origin = request.headers.get("origin");
-  if (
-    origin &&
-    ALLOWED_ORIGINS.length > 0 &&
-    !ALLOWED_ORIGINS.includes(origin)
-  ) {
-    return applyHeaders(
-      NextResponse.json({ error: "Forbidden origin" }, { status: 403 })
-    );
+  if (origin) {
+    // In production, deny unknown origins if ALLOWED_ORIGINS is not configured
+    const denyByDefault =
+      process.env.NODE_ENV === "production" && ALLOWED_ORIGINS.length === 0;
+    if (
+      denyByDefault ||
+      (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin))
+    ) {
+      return applyHeaders(
+        NextResponse.json({ error: "Forbidden origin" }, { status: 403 })
+      );
+    }
   }
 
   // Preflight
@@ -170,14 +174,28 @@ export async function middleware(request: NextRequest) {
   // ── Authentication (Bearer token) ──
   // Skip auth for the fal proxy route (called from browser, handles its own auth)
   const skipAuth = pathname.startsWith("/api/fal/proxy");
-  const serverApiKey = process.env.SERVER_API_KEY;
-  if (serverApiKey && !skipAuth) {
-    const authHeader = request.headers.get("authorization");
-    const providedKey = authHeader?.replace("Bearer ", "");
-    if (providedKey !== serverApiKey) {
-      return applyHeaders(
-        NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      );
+  if (!skipAuth) {
+    const serverApiKey = process.env.SERVER_API_KEY;
+    if (!serverApiKey) {
+      // In production, require SERVER_API_KEY to be set
+      if (process.env.NODE_ENV === "production") {
+        return applyHeaders(
+          NextResponse.json(
+            { error: "Server misconfigured" },
+            { status: 503 }
+          )
+        );
+      }
+      // In development, warn but allow through
+      console.warn("SERVER_API_KEY not set — API routes are unprotected");
+    } else {
+      const authHeader = request.headers.get("authorization");
+      const providedKey = authHeader?.replace("Bearer ", "");
+      if (providedKey !== serverApiKey) {
+        return applyHeaders(
+          NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+        );
+      }
     }
   }
 

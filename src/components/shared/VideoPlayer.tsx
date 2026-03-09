@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { memo, useRef, useState, useEffect } from "react";
 
 interface VideoPlayerProps {
   src: string;
@@ -8,7 +8,7 @@ interface VideoPlayerProps {
   loop?: boolean;
 }
 
-export default function VideoPlayer({ src, poster, loop = true }: VideoPlayerProps) {
+export default memo(function VideoPlayer({ src, poster, loop = true }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -167,4 +167,4 @@ export default function VideoPlayer({ src, poster, loop = true }: VideoPlayerPro
       )}
     </div>
   );
-}
+});

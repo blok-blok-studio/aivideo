@@ -88,7 +88,10 @@ export default function MotionTrackingSection() {
 
   const handleCharacterImage = useCallback((file: File) => {
     setCharacterImage(file);
-    setCharacterPreview(URL.createObjectURL(file));
+    setCharacterPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
   }, []);
 
   // Helper to update a specific step log
@@ -319,9 +322,9 @@ export default function MotionTrackingSection() {
   });
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-10">
-      <div className="mb-8">
-        <h2 className="font-display text-2xl font-bold text-text-primary">
+    <section className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-10">
+      <div className="mb-6 md:mb-8">
+        <h2 className="font-display text-xl font-bold text-text-primary md:text-2xl">
           Motion Tracking
         </h2>
         <p className="mt-1 text-sm text-text-secondary">
@@ -329,7 +332,7 @@ export default function MotionTrackingSection() {
         </p>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2">
+      <div className="grid gap-6 md:gap-8 lg:grid-cols-2">
         {/* Left column — Inputs */}
         <div className="space-y-6">
           <FileUploadZone

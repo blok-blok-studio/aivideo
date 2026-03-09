@@ -3,6 +3,7 @@ import { generateSpeech } from "@/lib/elevenlabs";
 import { prisma } from "@/lib/db";
 import { validateBody, safeError } from "@/lib/api-helpers";
 import { voiceoverGenerateSchema } from "@/lib/validation";
+import { uploadToR2, isR2Configured } from "@/lib/r2";
 
 export async function POST(req: NextRequest) {
   try {
@@ -29,8 +30,18 @@ export async function POST(req: NextRequest) {
         similarityBoost: similarity_boost,
       });
 
-      const base64 = Buffer.from(audioBuffer).toString("base64");
-      const audioUrl = `data:audio/mpeg;base64,${base64}`;
+      // Store in R2 if configured, otherwise fall back to base64
+      let audioUrl: string;
+      if (isR2Configured()) {
+        audioUrl = await uploadToR2(
+          audioBuffer,
+          `voiceover-${voiceJob.id}.mp3`,
+          "audio/mpeg"
+        );
+      } else {
+        const base64 = Buffer.from(audioBuffer).toString("base64");
+        audioUrl = `data:audio/mpeg;base64,${base64}`;
+      }
 
       await prisma.voiceJob.update({
         where: { id: voiceJob.id },
@@ -47,7 +58,7 @@ export async function POST(req: NextRequest) {
         },
       });
       return NextResponse.json(
-        { error: err instanceof Error ? err.message : "TTS failed" },
+        { error: "Speech generation failed. Please try again." },
         { status: 500 }
       );
     }

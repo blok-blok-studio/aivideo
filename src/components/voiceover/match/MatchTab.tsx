@@ -85,7 +85,7 @@ export default function MatchTab() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       {/* Reference Upload */}
       <FileUploadZone
         label="UPLOAD REFERENCE"
@@ -118,24 +118,24 @@ export default function MatchTab() {
             EXTRACTED PROFILE
           </h3>
           <div className="flex flex-wrap gap-3">
-            <span className="rounded-sm bg-bg-input px-2 py-1 font-mono text-[10px] text-text-primary">
+            <span className="rounded-md bg-bg-input px-2.5 py-1 font-mono text-[10px] text-text-primary">
               {analysis.gender}
             </span>
-            <span className="rounded-sm bg-bg-input px-2 py-1 font-mono text-[10px] text-text-primary">
+            <span className="rounded-md bg-bg-input px-2.5 py-1 font-mono text-[10px] text-text-primary">
               {analysis.accent} ({analysis.confidence}%)
             </span>
             {analysis.tone.map((t) => (
               <span
                 key={t}
-                className="rounded-sm bg-bg-input px-2 py-1 font-mono text-[10px] text-text-secondary"
+                className="rounded-md bg-bg-input px-2.5 py-1 font-mono text-[10px] text-text-secondary"
               >
                 {t}
               </span>
             ))}
-            <span className="rounded-sm bg-bg-input px-2 py-1 font-mono text-[10px] text-text-secondary">
+            <span className="rounded-md bg-bg-input px-2.5 py-1 font-mono text-[10px] text-text-secondary">
               {analysis.pace} WPM
             </span>
-            <span className="rounded-sm bg-bg-input px-2 py-1 font-mono text-[10px] text-text-secondary">
+            <span className="rounded-md bg-bg-input px-2.5 py-1 font-mono text-[10px] text-text-secondary">
               Energy: {analysis.energy}
             </span>
           </div>
@@ -176,7 +176,7 @@ export default function MatchTab() {
                     {match.overlapTags.map((tag) => (
                       <span
                         key={tag}
-                        className="rounded-sm bg-bg-input px-1.5 py-0.5 font-mono text-[9px] text-text-muted"
+                        className="rounded-md bg-bg-input px-1.5 py-0.5 font-mono text-[9px] text-text-muted"
                       >
                         {tag}
                       </span>

@@ -59,10 +59,10 @@ export default function GenerateTab() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       {/* Script Input */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">
             YOUR SCRIPT
           </label>
@@ -111,15 +111,15 @@ export default function GenerateTab() {
         </div>
 
         {/* Voice Grid */}
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredVoices.map((voice) => (
             <button
               key={voice.id}
               onClick={() => setSelectedVoice(voice)}
               className={clsx(
-                "rounded-card border p-3 text-left transition-all",
+                "rounded-card border p-3 text-left transition-all shadow-card hover:shadow-card-hover",
                 selectedVoice?.id === voice.id
-                  ? "border-accent bg-accent/5"
+                  ? "border-accent bg-accent/5 shadow-glow"
                   : "border-border-subtle bg-bg-surface hover:border-border-hover"
               )}
             >
@@ -127,10 +127,10 @@ export default function GenerateTab() {
                 {voice.name}
               </div>
               <div className="mt-1 flex flex-wrap gap-1">
-                <span className="rounded-sm bg-bg-input px-1.5 py-0.5 font-mono text-[9px] text-text-muted">
+                <span className="rounded-md bg-bg-input px-1.5 py-0.5 font-mono text-[9px] text-text-muted">
                   {voice.gender}
                 </span>
-                <span className="rounded-sm bg-bg-input px-1.5 py-0.5 font-mono text-[9px] text-text-muted">
+                <span className="rounded-md bg-bg-input px-1.5 py-0.5 font-mono text-[9px] text-text-muted">
                   {voice.accent}
                 </span>
               </div>

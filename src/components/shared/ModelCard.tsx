@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { clsx } from "clsx";
 
 interface ModelCardProps {
@@ -12,7 +13,7 @@ interface ModelCardProps {
   extra?: React.ReactNode;
 }
 
-export default function ModelCard({
+export default memo(function ModelCard({
   name,
   badge,
   description,
@@ -25,9 +26,9 @@ export default function ModelCard({
     <button
       onClick={onClick}
       className={clsx(
-        "w-full rounded-card border p-4 text-left transition-all",
+        "w-full rounded-card border p-3 text-left transition-all shadow-card hover:shadow-card-hover md:p-4",
         selected
-          ? "border-accent bg-accent/5"
+          ? "border-accent bg-accent/5 shadow-glow"
           : "border-border-subtle bg-bg-surface hover:border-border-hover"
       )}
     >
@@ -36,7 +37,7 @@ export default function ModelCard({
           <div className="flex items-center gap-2">
             <span
               className={clsx(
-                "rounded-sm px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase",
+                "rounded-md px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase",
                 selected
                   ? "bg-accent/20 text-accent"
                   : "bg-bg-input text-text-secondary"
@@ -57,4 +58,4 @@ export default function ModelCard({
       </div>
     </button>
   );
-}
+});

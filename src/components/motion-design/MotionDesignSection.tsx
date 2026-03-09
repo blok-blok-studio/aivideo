@@ -124,9 +124,9 @@ export default function MotionDesignSection() {
   };
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-10">
-      <div className="mb-8">
-        <h2 className="font-display text-2xl font-bold text-text-primary">
+    <section className="mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-10">
+      <div className="mb-6 md:mb-8">
+        <h2 className="font-display text-xl font-bold text-text-primary md:text-2xl">
           Motion Design & Ads
         </h2>
         <p className="mt-1 text-sm text-text-secondary">
@@ -135,7 +135,7 @@ export default function MotionDesignSection() {
       </div>
 
       {/* Input Panel */}
-      <div className="space-y-6 rounded-card border border-border-subtle bg-bg-surface/50 p-6">
+      <div className="space-y-5 rounded-panel border border-border-subtle bg-bg-surface/50 p-4 md:space-y-6 md:p-6">
         {/* Mode Tabs */}
         <div className="flex gap-1 rounded-card bg-bg-input p-1">
           {(
@@ -230,7 +230,7 @@ export default function MotionDesignSection() {
         )}
 
         {/* Settings Row */}
-        <div className="flex flex-wrap gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
           {/* Aspect Ratio */}
           <div className="space-y-1">
             <label className="font-mono text-[9px] font-bold uppercase tracking-widest text-text-muted">
@@ -382,7 +382,7 @@ export default function MotionDesignSection() {
       </div>
 
       {/* Model Grid */}
-      <div className="mt-8">
+      <div className="mt-6 md:mt-8">
         <div className="mb-4">
           <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">
             SELECT GENERATION MODEL
@@ -392,22 +392,22 @@ export default function MotionDesignSection() {
           </p>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {MOTION_DESIGN_MODELS.map((model) => (
             <button
               key={model.id}
               onClick={() => setSelectedModel(model)}
               className={clsx(
-                "rounded-card border p-4 text-left transition-all",
+                "rounded-card border p-3 md:p-4 text-left transition-all shadow-card hover:shadow-card-hover",
                 selectedModel.id === model.id
-                  ? "border-accent bg-accent/5"
+                  ? "border-accent bg-accent/5 shadow-glow"
                   : "border-border-subtle bg-bg-surface hover:border-border-hover"
               )}
             >
               <div className="mb-2 flex items-center gap-2">
                 <span
                   className={clsx(
-                    "rounded-sm px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase",
+                    "rounded-md px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase",
                     selectedModel.id === model.id
                       ? "bg-accent/20 text-accent"
                       : "bg-bg-input text-text-secondary"
@@ -440,7 +440,7 @@ export default function MotionDesignSection() {
 
       {/* Cost + Generate */}
       <div className="mt-6 space-y-4">
-        <div className="flex items-center justify-between rounded-input bg-bg-surface px-4 py-3">
+        <div className="flex items-center justify-between rounded-card bg-bg-surface px-4 py-3">
           <span className="text-xs text-text-secondary">Estimated cost</span>
           <span className="font-mono text-sm font-medium text-text-primary">
             ~${estimatedCost.toFixed(2)}
