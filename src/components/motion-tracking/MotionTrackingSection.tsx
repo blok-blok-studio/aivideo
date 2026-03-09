@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from "react";
 import FileUploadZone from "@/components/shared/FileUploadZone";
 import ModelCard from "@/components/shared/ModelCard";
+import { compressImage } from "@/lib/compress";
 import GenerateButton from "@/components/shared/GenerateButton";
 import ResultDisplay from "@/components/shared/ResultDisplay";
 import {
@@ -147,15 +148,27 @@ export default function MotionTrackingSection() {
       });
       setStepLogs([...logs]);
 
-      // ─── Step 2: Upload character image ───
+      // ─── Step 2: Compress & upload character image ───
       setProgressStep("uploading-image");
-      logs = updateLog(logs, "upload-image", { status: "running" });
+      logs = updateLog(logs, "upload-image", { status: "running", detail: "Compressing image…" });
       setStepLogs([...logs]);
       const startImg = Date.now();
 
       let imageUrl: string;
       try {
-        imageUrl = await falClient.storage.upload(characterImage);
+        const compressed = await compressImage(characterImage, {
+          maxDimension: 2048,
+          quality: 0.88,
+        });
+        const saved = characterImage.size - compressed.size;
+        if (saved > 0) {
+          logs = updateLog(logs, "upload-image", {
+            status: "running",
+            detail: `Compressed ${(characterImage.size / 1024 / 1024).toFixed(1)}MB → ${(compressed.size / 1024 / 1024).toFixed(1)}MB, uploading…`,
+          });
+          setStepLogs([...logs]);
+        }
+        imageUrl = await falClient.storage.upload(compressed);
       } catch (imgErr) {
         throw new Error(
           `Image upload failed: ${imgErr instanceof Error ? imgErr.message : String(imgErr)}`
