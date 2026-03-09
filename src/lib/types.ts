@@ -19,19 +19,10 @@ export interface MotionTrackingModel {
 
 export const MOTION_TRACKING_MODELS: MotionTrackingModel[] = [
   {
-    id: "kling-3.0-pro",
-    name: "Kling 3.0 Pro",
-    badge: "BEST",
-    description: "Full-body transfer · Finger-level accuracy · 30s max output",
-    details: "",
-    costPer5s: 0.84,
-    modelId: "fal-ai/kling-video/v3.0/pro/motion-control",
-  },
-  {
     id: "kling-2.6-pro",
     name: "Kling 2.6 Pro",
-    badge: "STABLE",
-    description: "Proven accuracy · Great for portraits & facial transfer",
+    badge: "BEST",
+    description: "Full-body transfer · Finger-level accuracy · 30s max output",
     details: "",
     costPer5s: 0.67,
     modelId: "fal-ai/kling-video/v2.6/pro/motion-control",
@@ -71,8 +62,8 @@ export const MOTION_DESIGN_MODELS: MotionDesignModel[] = [
     maxDuration: "15s",
     costPerSec: 0.28,
     modelIds: {
-      t2v: "fal-ai/kling-video/v3.0/pro/text-to-video",
-      i2v: "fal-ai/kling-video/v3.0/pro/image-to-video",
+      t2v: "fal-ai/kling-video/v3/pro/text-to-video",
+      i2v: "fal-ai/kling-video/v3/pro/image-to-video",
     },
   },
   {

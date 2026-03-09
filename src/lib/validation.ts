@@ -4,11 +4,13 @@ import { z } from "zod";
 // Only these fal.ai model IDs are permitted. Blocks attackers from
 // submitting arbitrary (expensive) model IDs.
 const ALLOWED_FAL_MODEL_IDS = [
-  "fal-ai/kling-video/v3.0/pro/motion-control",
+  // Motion control (v2.6 only — v3 doesn't have motion-control)
   "fal-ai/kling-video/v2.6/pro/motion-control",
   "fal-ai/kling-video/v2.6/standard/motion-control",
-  "fal-ai/kling-video/v3.0/pro/text-to-video",
-  "fal-ai/kling-video/v3.0/pro/image-to-video",
+  // Kling v3 (text/image to video)
+  "fal-ai/kling-video/v3/pro/text-to-video",
+  "fal-ai/kling-video/v3/pro/image-to-video",
+  // Other models
   "fal-ai/veo3",
   "fal-ai/veo3-fast",
   "fal-ai/sora/v2/pro/text-to-video",
