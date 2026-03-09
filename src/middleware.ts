@@ -1,39 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
-
-// ── Redis + rate limiters (Edge-compatible, instantiated directly) ──
-const redis = Redis.fromEnv();
-
-const generationLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(5, "1 m"),
-  prefix: "rl:gen",
-});
-
-const computeLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(10, "1 m"),
-  prefix: "rl:compute",
-});
-
-const readLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(60, "1 m"),
-  prefix: "rl:read",
-});
-
-const sensitiveLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(10, "1 m"),
-  prefix: "rl:sensitive",
-});
-
-const dailyGenerationLimiter = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(100, "1 d"),
-  prefix: "rl:daily-gen",
-});
 
 // ── Security headers ──
 const SECURITY_HEADERS: Record<string, string> = {
@@ -48,11 +13,65 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-DNS-Prefetch-Control": "off",
 };
 
+// ── Lazy-loaded Redis + rate limiters ──
+// Only initialized when Upstash env vars are present.
+// If not configured, rate limiting is skipped (requests still go through).
+let rateLimitersInitialized = false;
+let generationLimiter: import("@upstash/ratelimit").Ratelimit | null = null;
+let computeLimiter: import("@upstash/ratelimit").Ratelimit | null = null;
+let readLimiter: import("@upstash/ratelimit").Ratelimit | null = null;
+let sensitiveLimiter: import("@upstash/ratelimit").Ratelimit | null = null;
+let dailyGenerationLimiter: import("@upstash/ratelimit").Ratelimit | null = null;
+
+function initRateLimiters() {
+  if (rateLimitersInitialized) return;
+  rateLimitersInitialized = true;
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    console.warn("Upstash Redis not configured — rate limiting disabled");
+    return;
+  }
+
+  try {
+    const { Redis } = require("@upstash/redis") as typeof import("@upstash/redis");
+    const { Ratelimit } = require("@upstash/ratelimit") as typeof import("@upstash/ratelimit");
+
+    const redis = new Redis({ url, token });
+
+    generationLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(5, "1 m"),
+      prefix: "rl:gen",
+    });
+    computeLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(10, "1 m"),
+      prefix: "rl:compute",
+    });
+    readLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(60, "1 m"),
+      prefix: "rl:read",
+    });
+    sensitiveLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(10, "1 m"),
+      prefix: "rl:sensitive",
+    });
+    dailyGenerationLimiter = new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(100, "1 d"),
+      prefix: "rl:daily-gen",
+    });
+  } catch (err) {
+    console.error("Failed to initialize rate limiters:", err);
+  }
+}
+
 // ── Route → rate limit tier mapping ──
-function getLimiter(
-  pathname: string,
-  method: string
-): Ratelimit | null {
+function getLimiter(pathname: string, method: string) {
   if (
     (pathname.startsWith("/api/generate/") && method === "POST") ||
     (pathname === "/api/voiceover/generate" && method === "POST")
@@ -160,7 +179,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // ── Rate limiting ──
+  // ── Rate limiting (lazy init — skipped if Upstash not configured) ──
+  initRateLimiters();
   const clientIP = getClientIP(request);
   const limiter = getLimiter(pathname, method);
 
@@ -184,7 +204,7 @@ export async function middleware(request: NextRequest) {
       }
 
       // Daily cap for generation routes
-      if (needsDailyLimit(pathname, method)) {
+      if (needsDailyLimit(pathname, method) && dailyGenerationLimiter) {
         const dailyResult = await dailyGenerationLimiter.limit(clientIP);
         if (!dailyResult.success) {
           return applyHeaders(
