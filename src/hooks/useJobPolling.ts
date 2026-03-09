@@ -46,13 +46,14 @@ export function useFileUpload() {
   const upload = async (file: File): Promise<string> => {
     setUploading(true);
     try {
-      // For now, create a local object URL — in production, upload to R2
-      const url = URL.createObjectURL(file);
-      // TODO: Replace with actual R2 upload
-      // const formData = new FormData();
-      // formData.append("file", file);
-      // const res = await fetch("/api/upload", { method: "POST", body: formData });
-      // const { url } = await res.json();
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(err.error || "Upload failed");
+      }
+      const { url } = await res.json();
       return url;
     } finally {
       setUploading(false);
