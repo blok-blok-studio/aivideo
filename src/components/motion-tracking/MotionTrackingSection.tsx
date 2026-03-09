@@ -117,6 +117,7 @@ export default function MotionTrackingSection() {
             helperText="Upload the video containing the movements you want to transfer. Clear lighting, full-body framing works best."
             preview={drivingPreview}
             previewType="video"
+            fileName={drivingVideo?.name}
             onFile={handleDrivingVideo}
             onClear={() => {
               setDrivingVideo(null);
@@ -131,6 +132,7 @@ export default function MotionTrackingSection() {
             helperText="Upload the person or character you want to perform your movements. Full-body image recommended."
             preview={characterPreview}
             previewType="image"
+            fileName={characterImage?.name}
             onFile={handleCharacterImage}
             onClear={() => {
               setCharacterImage(null);

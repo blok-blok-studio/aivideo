@@ -10,6 +10,7 @@ interface FileUploadZoneProps {
   helperText?: string;
   preview?: string | null;
   previewType?: "image" | "video";
+  fileName?: string | null;
   onFile: (file: File) => void;
   onClear?: () => void;
 }
@@ -21,6 +22,7 @@ export default function FileUploadZone({
   helperText,
   preview,
   previewType = "image",
+  fileName,
   onFile,
   onClear,
 }: FileUploadZoneProps) {
@@ -89,6 +91,27 @@ export default function FileUploadZone({
               </svg>
             </button>
           )}
+          {/* Ready indicator */}
+          <div className="flex items-center gap-2 border-t border-border-subtle bg-bg-surface px-4 py-2.5">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#22c55e"
+              strokeWidth="2.5"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span className="text-xs font-medium text-green-500">
+              {previewType === "video" ? "Video" : "Image"} ready
+            </span>
+            {fileName && (
+              <span className="ml-auto truncate text-[10px] font-mono text-text-muted max-w-[200px]">
+                {fileName}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     );
