@@ -8,7 +8,7 @@ const createTemplateSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   description: z.string().max(500).optional(),
   section: z.enum(["motion-tracking", "motion-design", "voiceover"]),
-  settings: z.record(z.unknown()),
+  settings: z.record(z.string(), z.unknown()),
 });
 
 export async function GET(req: NextRequest) {
@@ -62,7 +62,11 @@ export async function POST(req: NextRequest) {
     if (!result.success) return result.response;
 
     const template = await prisma.template.create({
-      data: { ...result.data, userId },
+      data: {
+          ...result.data,
+          settings: result.data.settings as Record<string, string | number | boolean | null>,
+          userId,
+        },
     });
 
     return NextResponse.json({ template }, { status: 201 });

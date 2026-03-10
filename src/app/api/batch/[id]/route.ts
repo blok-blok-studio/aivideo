@@ -86,7 +86,7 @@ export async function POST(
             modelId,
             modelName: (input.model_name as string) || modelId,
             status: "queued",
-            inputParams: input,
+            inputParams: input as Record<string, string | number | boolean | null>,
             estimatedCost: (input.estimated_cost as number) || null,
             userId,
             projectId: batch.projectId,

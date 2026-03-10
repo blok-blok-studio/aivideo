@@ -25,7 +25,7 @@ export function logUsage(params: LogUsageParams): void {
         modelName: params.modelName,
         cost: params.cost || 0,
         status: params.status,
-        metadata: params.metadata || undefined,
+        metadata: (params.metadata as Record<string, string | number | boolean | null>) || undefined,
       },
     })
     .catch((err) => {

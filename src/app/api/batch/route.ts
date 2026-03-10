@@ -11,7 +11,7 @@ const createBatchSchema = z.object({
   items: z
     .array(
       z.object({
-        inputParams: z.record(z.unknown()),
+        inputParams: z.record(z.string(), z.unknown()),
       })
     )
     .min(1, "At least one item is required")
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         totalCount: items.length,
         items: {
           create: items.map((item, idx) => ({
-            inputParams: item.inputParams,
+            inputParams: item.inputParams as Record<string, string | number | boolean | null>,
             sortOrder: idx,
           })),
         },

@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
             modelName: modelId.split("/").pop() || modelId,
             status: "queued",
             falRequestId: request_id,
-            inputParams: settings,
+            inputParams: settings as Record<string, string | number | boolean | null>,
             userId: schedule.userId,
           },
         });
