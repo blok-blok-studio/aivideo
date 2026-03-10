@@ -140,16 +140,24 @@ export async function middleware(request: NextRequest) {
   // ── CORS enforcement ──
   const origin = request.headers.get("origin");
   if (origin) {
-    // In production, deny unknown origins if ALLOWED_ORIGINS is not configured
-    const denyByDefault =
-      process.env.NODE_ENV === "production" && ALLOWED_ORIGINS.length === 0;
-    if (
-      denyByDefault ||
-      (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin))
-    ) {
-      return applyHeaders(
-        NextResponse.json({ error: "Forbidden origin" }, { status: 403 })
-      );
+    // Allow same-origin requests (the app's own browser requests)
+    const requestHost = request.headers.get("host") || request.nextUrl.host;
+    const isSameOrigin =
+      origin === `https://${requestHost}` || origin === `http://${requestHost}`;
+
+    if (!isSameOrigin) {
+      // If ALLOWED_ORIGINS is configured, check against it
+      if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(origin)) {
+        return applyHeaders(
+          NextResponse.json({ error: "Forbidden origin" }, { status: 403 })
+        );
+      }
+      // If ALLOWED_ORIGINS is not configured, deny unknown cross-origin requests in production
+      if (ALLOWED_ORIGINS.length === 0 && process.env.NODE_ENV === "production") {
+        return applyHeaders(
+          NextResponse.json({ error: "Forbidden origin" }, { status: 403 })
+        );
+      }
     }
   }
 
