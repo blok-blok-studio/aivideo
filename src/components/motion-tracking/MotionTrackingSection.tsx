@@ -9,12 +9,17 @@ import ResultDisplay from "@/components/shared/ResultDisplay";
 import {
   MOTION_TRACKING_MODELS,
   MotionTrackingModel,
+  CHARACTER_SWAP_MODELS,
+  CharacterSwapModel,
   CharacterOrientation,
   estimateMotionTrackingCost,
+  estimateCharacterSwapCost,
   JobStatus,
 } from "@/lib/types";
 import { clsx } from "clsx";
 import { useJobPolling } from "@/hooks/useJobPolling";
+
+type TrackingMode = "motion-transfer" | "character-swap";
 
 type ProgressStep =
   | "idle"
@@ -34,6 +39,10 @@ interface StepLog {
 }
 
 export default function MotionTrackingSection() {
+  // Mode toggle
+  const [trackingMode, setTrackingMode] = useState<TrackingMode>("motion-transfer");
+  const isSwapMode = trackingMode === "character-swap";
+
   // Inputs
   const [drivingVideo, setDrivingVideo] = useState<File | null>(null);
   const [drivingPreview, setDrivingPreview] = useState<string | null>(null);
@@ -44,6 +53,9 @@ export default function MotionTrackingSection() {
   const [keepAudio, setKeepAudio] = useState(false);
   const [selectedModel, setSelectedModel] = useState<MotionTrackingModel>(
     MOTION_TRACKING_MODELS[0]
+  );
+  const [selectedSwapModel, setSelectedSwapModel] = useState<CharacterSwapModel>(
+    CHARACTER_SWAP_MODELS[0]
   );
   const [videoDuration, setVideoDuration] = useState<number>(5);
 
@@ -56,9 +68,16 @@ export default function MotionTrackingSection() {
   const { job, elapsed } = useJobPolling(jobId);
 
   const estimatedCost = useMemo(
-    () => estimateMotionTrackingCost(videoDuration, selectedModel.costPer5s),
-    [videoDuration, selectedModel]
+    () =>
+      isSwapMode
+        ? estimateCharacterSwapCost(videoDuration, selectedSwapModel.costPer5s)
+        : estimateMotionTrackingCost(videoDuration, selectedModel.costPer5s),
+    [videoDuration, selectedModel, selectedSwapModel, isSwapMode]
   );
+
+  const activeModelCostPer5s = isSwapMode
+    ? selectedSwapModel.costPer5s
+    : selectedModel.costPer5s;
 
   const canGenerate = drivingVideo && characterImage && !loading;
 
@@ -120,7 +139,7 @@ export default function MotionTrackingSection() {
         detail: `Upload video (${(drivingVideo.size / 1024 / 1024).toFixed(1)}MB)`,
       },
       { step: "submit-job", status: "pending", detail: "Submit to AI model" },
-      { step: "process", status: "pending", detail: "Generate video" },
+      { step: "process", status: "pending", detail: isSwapMode ? "Swap character" : "Generate video" },
     ];
     setStepLogs(initialLogs);
     let logs = initialLogs;
@@ -213,24 +232,36 @@ export default function MotionTrackingSection() {
       setStepLogs([...logs]);
       const startSubmit = Date.now();
 
-      const payload = {
-        image_url: imageUrl,
-        video_url: videoUrl,
-        model_id: selectedModel.modelId,
-        character_orientation: orientation,
-        prompt: prompt || undefined,
-        keep_original_sound: keepAudio,
-      };
+      const apiEndpoint = isSwapMode
+        ? "/api/generate/character-swap"
+        : "/api/generate/motion-tracking";
+
+      const payload = isSwapMode
+        ? {
+            image_url: imageUrl,
+            video_url: videoUrl,
+            model_id: selectedSwapModel.modelId,
+          }
+        : {
+            image_url: imageUrl,
+            video_url: videoUrl,
+            model_id: selectedModel.modelId,
+            character_orientation: orientation,
+            prompt: prompt || undefined,
+            keep_original_sound: keepAudio,
+          };
+
+      const activeModelId = isSwapMode ? selectedSwapModel.modelId : selectedModel.modelId;
 
       logs = updateLog(logs, "submit-job", {
         status: "running",
-        detail: `POST /api/generate/motion-tracking — model: ${selectedModel.modelId}`,
+        detail: `POST ${apiEndpoint} — model: ${activeModelId}`,
       });
       setStepLogs([...logs]);
 
       let res: Response;
       try {
-        res = await fetch("/api/generate/motion-tracking", {
+        res = await fetch(apiEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -297,7 +328,7 @@ export default function MotionTrackingSection() {
   const jobWithStatus = job as (typeof job) & { falStatus?: string; falStatusError?: string } | null;
   const displayLogs = stepLogs.map((l) => {
     if (l.step === "process" && jobWithStatus?.status === "complete") {
-      return { ...l, status: "done" as const, detail: "Video generated successfully" };
+      return { ...l, status: "done" as const, detail: isSwapMode ? "Character swapped successfully" : "Video generated successfully" };
     }
     if (l.step === "process" && jobWithStatus?.status === "failed") {
       return {
@@ -332,14 +363,46 @@ export default function MotionTrackingSection() {
         </p>
       </div>
 
+      {/* Mode Toggle */}
+      <div className="mb-6 flex gap-1 rounded-card bg-bg-surface p-1 md:mb-8">
+        {(
+          [
+            { key: "motion-transfer", label: "MOTION TRANSFER", desc: "Apply your movements to a character" },
+            { key: "character-swap", label: "CHARACTER SWAP", desc: "Replace yourself with a character" },
+          ] as const
+        ).map((mode) => (
+          <button
+            key={mode.key}
+            onClick={() => setTrackingMode(mode.key)}
+            className={clsx(
+              "flex-1 rounded-input px-2 py-2.5 text-center transition-all sm:px-4",
+              trackingMode === mode.key
+                ? "bg-bg-input text-text-primary shadow-sm"
+                : "text-text-secondary hover:text-text-primary"
+            )}
+          >
+            <span className="block text-[10px] font-medium uppercase tracking-wider sm:text-xs">
+              {mode.label}
+            </span>
+            <span className="mt-0.5 block text-[9px] font-normal normal-case text-text-muted">
+              {mode.desc}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-6 md:gap-8 lg:grid-cols-2">
         {/* Left column — Inputs */}
         <div className="space-y-6">
           <FileUploadZone
-            label="YOUR MOVEMENT"
+            label={isSwapMode ? "YOUR VIDEO" : "YOUR MOVEMENT"}
             accept=".mp4,.mov,.webm"
             maxSizeMB={100}
-            helperText="Upload the video containing the movements you want to transfer. Clear lighting, full-body framing works best."
+            helperText={
+              isSwapMode
+                ? "Upload the video you want the character placed into. Your background and scene are preserved."
+                : "Upload the video containing the movements you want to transfer. Clear lighting, full-body framing works best."
+            }
             preview={drivingPreview}
             previewType="video"
             fileName={drivingVideo?.name}
@@ -354,7 +417,11 @@ export default function MotionTrackingSection() {
             label="TARGET CHARACTER"
             accept=".jpg,.png,.webp"
             maxSizeMB={10}
-            helperText="Upload the person or character you want to perform your movements. Full-body image recommended."
+            helperText={
+              isSwapMode
+                ? "Upload the person who will replace you in the video. Full-body image recommended."
+                : "Upload the person or character you want to perform your movements. Full-body image recommended."
+            }
             preview={characterPreview}
             previewType="image"
             fileName={characterImage?.name}
@@ -365,52 +432,67 @@ export default function MotionTrackingSection() {
             }}
           />
 
-          {/* Orientation Toggle */}
-          <div className="space-y-2">
-            <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">
-              ORIENTATION MODE
-            </label>
-            <div className="flex gap-2">
-              {(["image", "video"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setOrientation(mode)}
-                  className={clsx(
-                    "flex-1 rounded-input px-4 py-2 text-xs font-medium uppercase transition-all",
-                    orientation === mode
-                      ? "bg-accent/10 text-accent ring-1 ring-accent/30"
-                      : "bg-bg-input text-text-secondary hover:text-text-primary"
-                  )}
-                >
-                  MATCH {mode === "image" ? "IMAGE" : "VIDEO"}
-                  <span className="mt-0.5 block font-mono text-[9px] font-normal normal-case text-text-muted">
-                    {mode === "image"
-                      ? "Preserves original pose, up to 10s"
-                      : "Follows driving video, up to 30s"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Prompt */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          {/* Orientation Toggle — Motion Transfer only */}
+          {!isSwapMode && (
+            <div className="space-y-2">
               <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">
-                SCENE CONTEXT (optional)
+                ORIENTATION MODE
               </label>
-              <span className="font-mono text-[10px] text-text-muted">
-                {prompt.length}/2500
-              </span>
+              <div className="flex gap-2">
+                {(["image", "video"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    onClick={() => setOrientation(mode)}
+                    className={clsx(
+                      "flex-1 rounded-input px-4 py-2 text-xs font-medium uppercase transition-all",
+                      orientation === mode
+                        ? "bg-accent/10 text-accent ring-1 ring-accent/30"
+                        : "bg-bg-input text-text-secondary hover:text-text-primary"
+                    )}
+                  >
+                    MATCH {mode === "image" ? "IMAGE" : "VIDEO"}
+                    <span className="mt-0.5 block font-mono text-[9px] font-normal normal-case text-text-muted">
+                      {mode === "image"
+                        ? "Preserves original pose, up to 10s"
+                        : "Follows driving video, up to 30s"}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value.slice(0, 2500))}
-              placeholder="Describe background, environment, lighting, or style. The model handles motion automatically — use this for context only."
-              rows={3}
-              className="w-full rounded-input border border-border-subtle bg-bg-input px-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/20"
-            />
-          </div>
+          )}
+
+          {/* Prompt — Motion Transfer only */}
+          {!isSwapMode && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="font-mono text-[10px] font-bold uppercase tracking-widest text-text-secondary">
+                  SCENE CONTEXT (optional)
+                </label>
+                <span className="font-mono text-[10px] text-text-muted">
+                  {prompt.length}/2500
+                </span>
+              </div>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value.slice(0, 2500))}
+                placeholder="Describe background, environment, lighting, or style. The model handles motion automatically — use this for context only."
+                rows={3}
+                className="w-full rounded-input border border-border-subtle bg-bg-input px-4 py-3 text-sm text-text-primary placeholder:text-text-muted focus:border-accent/30 focus:outline-none focus:ring-1 focus:ring-accent/20"
+              />
+            </div>
+          )}
+
+          {/* Character Swap info callout */}
+          {isSwapMode && (
+            <div className="rounded-card border border-accent/20 bg-accent/5 px-4 py-3">
+              <p className="text-xs text-text-secondary">
+                <span className="font-semibold text-accent">How it works:</span>{" "}
+                Your original video&apos;s background, lighting, and camera work are preserved.
+                The target character replaces you with full-body swap — not just face.
+              </p>
+            </div>
+          )}
 
           {/* Keep Audio */}
           <div className="flex items-center justify-between rounded-input bg-bg-surface px-4 py-3">
@@ -419,7 +501,7 @@ export default function MotionTrackingSection() {
                 KEEP ORIGINAL AUDIO
               </span>
               <p className="text-xs text-text-muted">
-                Preserve the audio from your driving video in the output
+                Preserve the audio from your {isSwapMode ? "source" : "driving"} video in the output
               </p>
             </div>
             <button
@@ -446,17 +528,29 @@ export default function MotionTrackingSection() {
               SELECT MODEL
             </label>
             <div className="space-y-3">
-              {MOTION_TRACKING_MODELS.map((model) => (
-                <ModelCard
-                  key={model.id}
-                  name={model.name}
-                  badge={model.badge}
-                  description={model.description}
-                  cost={`$${model.costPer5s.toFixed(2)} / 5s`}
-                  selected={selectedModel.id === model.id}
-                  onClick={() => setSelectedModel(model)}
-                />
-              ))}
+              {isSwapMode
+                ? CHARACTER_SWAP_MODELS.map((model) => (
+                    <ModelCard
+                      key={model.id}
+                      name={model.name}
+                      badge={model.badge}
+                      description={model.description}
+                      cost={`$${model.costPer5s.toFixed(2)} / 5s`}
+                      selected={selectedSwapModel.id === model.id}
+                      onClick={() => setSelectedSwapModel(model)}
+                    />
+                  ))
+                : MOTION_TRACKING_MODELS.map((model) => (
+                    <ModelCard
+                      key={model.id}
+                      name={model.name}
+                      badge={model.badge}
+                      description={model.description}
+                      cost={`$${model.costPer5s.toFixed(2)} / 5s`}
+                      selected={selectedModel.id === model.id}
+                      onClick={() => setSelectedModel(model)}
+                    />
+                  ))}
             </div>
           </div>
 
@@ -472,14 +566,14 @@ export default function MotionTrackingSection() {
             </div>
             {videoDuration > 0 && (
               <p className="mt-1 font-mono text-[10px] text-text-muted">
-                {videoDuration}s video × ${selectedModel.costPer5s.toFixed(2)}
+                {videoDuration}s video × ${activeModelCostPer5s.toFixed(2)}
                 /5s
               </p>
             )}
           </div>
 
           <GenerateButton
-            label="TRANSFER MOTION"
+            label={isSwapMode ? "SWAP CHARACTER" : "TRANSFER MOTION"}
             loading={loading || currentStep === "processing"}
             loadingLabel={
               currentStep === "loading-sdk"
@@ -490,6 +584,8 @@ export default function MotionTrackingSection() {
                 ? "Uploading video..."
                 : currentStep === "submitting"
                 ? "Submitting job..."
+                : isSwapMode
+                ? "Swapping..."
                 : "Generating..."
             }
             disabled={!canGenerate}
@@ -629,7 +725,7 @@ export default function MotionTrackingSection() {
                 </svg>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-red-400">
-                    Generation failed
+                    {isSwapMode ? "Character swap failed" : "Generation failed"}
                   </p>
                   <p className="mt-1 text-xs text-red-400/70 break-all">
                     {errorMessage}
@@ -674,7 +770,7 @@ export default function MotionTrackingSection() {
                 </svg>
                 <div>
                   <p className="text-sm font-medium text-red-400">
-                    Generation failed
+                    {isSwapMode ? "Character swap failed" : "Generation failed"}
                   </p>
                   <p className="mt-1 text-xs text-red-400/70">
                     {job.errorMsg ||

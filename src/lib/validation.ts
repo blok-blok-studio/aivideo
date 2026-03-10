@@ -18,6 +18,8 @@ const ALLOWED_FAL_MODEL_IDS = [
   "wan/v2.6/text-to-video",
   "wan/v2.6/image-to-video",
   "fal-ai/hunyuan-video",
+  // Character swap
+  "fal-ai/pixverse/swap",
 ] as const;
 
 // ── Safe URL: HTTPS only (prevents SSRF via file://, http://) ──
@@ -84,6 +86,13 @@ export const voiceoverCloneSchema = z.object({
   method: z.enum(["instant", "professional"]).default("instant"),
   stability: z.number().min(0).max(1).default(0.5),
   similarity_boost: z.number().min(0).max(1).default(0.75),
+});
+
+// ── Character Swap ──
+export const characterSwapSchema = z.object({
+  video_url: safeUrl,
+  image_url: safeUrl,
+  model_id: z.enum(ALLOWED_FAL_MODEL_IDS),
 });
 
 // ── ID params ──

@@ -124,6 +124,31 @@ export const MOTION_DESIGN_MODELS: MotionDesignModel[] = [
   },
 ];
 
+// ── Character Swap ──
+export interface CharacterSwapModel {
+  id: string;
+  name: string;
+  badge: string;
+  description: string;
+  costPer5s: number;
+  modelId: string;
+}
+
+export const CHARACTER_SWAP_MODELS: CharacterSwapModel[] = [
+  {
+    id: "pixverse-swap",
+    name: "Pixverse Swap",
+    badge: "FULL BODY",
+    description: "Full-body replacement · Keeps your background & scene · Up to 1080p",
+    costPer5s: 0.30,
+    modelId: "fal-ai/pixverse/swap",
+  },
+];
+
+export function estimateCharacterSwapCost(durationSec: number, costPer5s: number): number {
+  return (durationSec * costPer5s) / 5;
+}
+
 // ── Voiceover ──
 export interface Voice {
   id: string;
