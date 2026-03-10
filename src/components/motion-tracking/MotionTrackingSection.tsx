@@ -191,10 +191,21 @@ export default function MotionTrackingSection() {
           setStepLogs([...logs]);
         }
         imageUrl = await falClient.storage.upload(compressed);
-      } catch (imgErr) {
-        throw new Error(
-          `Image upload failed: ${imgErr instanceof Error ? imgErr.message : String(imgErr)}`
-        );
+      } catch (imgErr: unknown) {
+        // Extract the best available message from fal ApiError or plain Error
+        let detail = "";
+        if (imgErr && typeof imgErr === "object") {
+          const e = imgErr as Record<string, unknown>;
+          detail =
+            (e.message as string) ||
+            (e.detail as string) ||
+            (e.statusText as string) ||
+            (e.status ? `HTTP ${e.status}` : "") ||
+            String(imgErr);
+        } else {
+          detail = String(imgErr);
+        }
+        throw new Error(`Image upload failed: ${detail}`);
       }
 
       logs = updateLog(logs, "upload-image", {
@@ -213,10 +224,20 @@ export default function MotionTrackingSection() {
       let videoUrl: string;
       try {
         videoUrl = await falClient.storage.upload(drivingVideo);
-      } catch (vidErr) {
-        throw new Error(
-          `Video upload failed: ${vidErr instanceof Error ? vidErr.message : String(vidErr)}`
-        );
+      } catch (vidErr: unknown) {
+        let detail = "";
+        if (vidErr && typeof vidErr === "object") {
+          const e = vidErr as Record<string, unknown>;
+          detail =
+            (e.message as string) ||
+            (e.detail as string) ||
+            (e.statusText as string) ||
+            (e.status ? `HTTP ${e.status}` : "") ||
+            String(vidErr);
+        } else {
+          detail = String(vidErr);
+        }
+        throw new Error(`Video upload failed: ${detail}`);
       }
 
       logs = updateLog(logs, "upload-video", {

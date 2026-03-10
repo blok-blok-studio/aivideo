@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
  */
 
 const ALLOWED_HOSTS = [
+  "fal.ai",
   "rest.fal.ai",
   "queue.fal.run",
   "fal.run",
@@ -82,12 +83,31 @@ async function handler(req: NextRequest) {
     });
 
     const responseBody = await response.text();
+    const contentType = response.headers.get("content-type") || "application/json";
+
+    // If the upstream returned an error with JSON body, ensure it has a
+    // `message` field so the fal SDK can extract a meaningful error.
+    if (!response.ok && contentType.includes("application/json")) {
+      try {
+        const parsed = JSON.parse(responseBody);
+        if (!parsed.message) {
+          parsed.message =
+            parsed.detail || parsed.error || `HTTP ${response.status}: ${response.statusText}`;
+          return new NextResponse(JSON.stringify(parsed), {
+            status: response.status,
+            statusText: response.statusText,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      } catch {
+        // not valid JSON, pass through
+      }
+    }
 
     return new NextResponse(responseBody, {
       status: response.status,
-      headers: {
-        "Content-Type": response.headers.get("content-type") || "application/json",
-      },
+      statusText: response.statusText,
+      headers: { "Content-Type": contentType },
     });
   } catch (err) {
     console.error("Fal proxy error:", err);
