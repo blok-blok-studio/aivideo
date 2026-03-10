@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
         where: { createdAt: { gte: since }, modelName: { not: null } },
         _sum: { cost: true },
         _count: true,
-        orderBy: { _count: { _all: "desc" } },
+        orderBy: { _sum: { cost: "desc" } },
         take: 10,
       }),
 
