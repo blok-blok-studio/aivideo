@@ -162,7 +162,7 @@ export default function AnalyticsPage() {
                         borderRadius: "12px",
                         fontSize: 12,
                       }}
-                      formatter={(value: number) => [`$${value.toFixed(2)}`, "Spend"]}
+                      formatter={(value) => [`$${Number(value).toFixed(2)}`, "Spend"]}
                       labelFormatter={(label) =>
                         new Date(label).toLocaleDateString("en", {
                           month: "long",
