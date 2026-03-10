@@ -180,8 +180,16 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── Authentication (Bearer token) ──
-  // Skip auth for the fal proxy route (called from browser, handles its own auth)
-  const skipAuth = pathname.startsWith("/api/fal/proxy");
+  // Skip auth for same-origin browser requests and the fal proxy route.
+  // Bearer token auth is only required for external/cross-origin API consumers.
+  const requestHost = request.headers.get("host") || request.nextUrl.host;
+  const isSameOriginRequest = origin
+    ? origin === `https://${requestHost}` || origin === `http://${requestHost}`
+    : false;
+  const skipAuth =
+    isSameOriginRequest ||
+    pathname.startsWith("/api/fal/proxy") ||
+    pathname.startsWith("/api/auth/");
   if (!skipAuth) {
     const serverApiKey = process.env.SERVER_API_KEY;
     if (!serverApiKey) {
