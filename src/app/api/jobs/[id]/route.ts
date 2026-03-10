@@ -23,67 +23,86 @@ export async function GET(
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    // If processing, check fal.ai status
+    // ── Job is "ready" = status COMPLETED on fal.ai, now fetch the result ──
+    // This is a separate state so we don't try status+result in one request
+    // (which can exceed Vercel's 10s function timeout).
+    if (job.status === "ready" && job.falRequestId) {
+      const responseUrl =
+        job.falResponseUrl ||
+        (job.inputParams as Record<string, unknown>)?._statusResponseUrl as string | undefined;
+
+      try {
+        const falResult = await getFalResult(
+          job.modelId,
+          job.falRequestId,
+          responseUrl
+        );
+        const data = falResult.data as Record<string, unknown>;
+        const video = data.video as { url: string } | undefined;
+        const outputUrl =
+          video?.url || (data.output as { url: string })?.url;
+
+        console.log(
+          `[Job ${id}] Result keys:`,
+          Object.keys(data),
+          "outputUrl:",
+          outputUrl?.slice(0, 80)
+        );
+
+        const updated = await prisma.job.update({
+          where: { id: job.id },
+          data: {
+            status: "complete",
+            outputUrl: outputUrl || null,
+          },
+        });
+        return NextResponse.json(updated);
+      } catch (resultErr) {
+        console.error(`[Job ${id}] Result fetch failed:`, resultErr);
+        const updated = await prisma.job.update({
+          where: { id: job.id },
+          data: {
+            status: "failed",
+            errorMsg: `Failed to fetch result: ${resultErr instanceof Error ? resultErr.message : String(resultErr)}`,
+          },
+        });
+        return NextResponse.json(updated);
+      }
+    }
+
+    // ── Job is "processing" = check fal.ai status ──
     if (job.status === "processing" && job.falRequestId) {
       try {
         const falStatus = await getFalStatus(job.modelId, job.falRequestId);
         const statusStr = String(falStatus.status || "").toUpperCase();
 
-        // Extract response_url from status response (available when COMPLETED)
-        const statusResponseUrl = (falStatus as unknown as Record<string, unknown>)
-          .response_url as string | undefined;
+        const statusResponseUrl = falStatus.response_url as string | undefined;
 
         console.log(
-          `[Job ${id}] fal.ai status: ${statusStr}`,
-          `response_url: ${statusResponseUrl?.slice(0, 100) || "none"}`,
-          JSON.stringify(falStatus).slice(0, 500)
+          `[Job ${id}] fal.ai: ${statusStr}`,
+          statusResponseUrl ? `url=${statusResponseUrl.slice(0, 80)}` : ""
         );
 
         if (statusStr === "COMPLETED") {
-          // Use response_url from status response, fall back to DB, then let getFalResult try SDK
-          const responseUrl = statusResponseUrl || job.falResponseUrl;
-
-          try {
-            const falResult = await getFalResult(
-              job.modelId,
-              job.falRequestId,
-              responseUrl
-            );
-            const data = falResult.data as Record<string, unknown>;
-            const video = data.video as { url: string } | undefined;
-            const outputUrl =
-              video?.url || (data.output as { url: string })?.url;
-
-            console.log(
-              `[Job ${id}] Result data keys:`,
-              Object.keys(data),
-              "outputUrl:",
-              outputUrl?.slice(0, 80)
-            );
-
-            const updated = await prisma.job.update({
-              where: { id: job.id },
-              data: {
-                status: "complete",
-                outputUrl: outputUrl || null,
-              },
-            });
-            return NextResponse.json(updated);
-          } catch (resultErr) {
-            console.error(`[Job ${id}] Failed to fetch result:`, resultErr);
-            const updated = await prisma.job.update({
-              where: { id: job.id },
-              data: {
-                status: "failed",
-                errorMsg: `Failed to fetch result: ${resultErr instanceof Error ? resultErr.message : String(resultErr)}`,
-              },
-            });
-            return NextResponse.json(updated);
-          }
+          // Mark as "ready" so the NEXT poll fetches the result.
+          // This prevents status+result from running in one 10s window.
+          const updated = await prisma.job.update({
+            where: { id: job.id },
+            data: {
+              status: "ready",
+              falResponseUrl: statusResponseUrl || job.falResponseUrl || null,
+            },
+          });
+          // Return as still processing so frontend keeps polling
+          return NextResponse.json({
+            ...updated,
+            status: "processing",
+            falStatus: "COMPLETED — fetching result…",
+          });
         }
 
         if (statusStr === "FAILED") {
-          const logs = (falStatus as unknown as Record<string, unknown>).logs;
+          const logs = falStatus.logs;
           const errorDetail =
             typeof logs === "string"
               ? logs.slice(0, 500)
@@ -99,19 +118,17 @@ export async function GET(
           return NextResponse.json(updated);
         }
 
-        // IN_QUEUE or IN_PROGRESS — still working, include fal status in response
+        // IN_QUEUE or IN_PROGRESS — still working
         return NextResponse.json({
           ...job,
           falStatus: statusStr,
         });
       } catch (statusErr) {
-        // Log the error instead of silently swallowing it
         console.error(
-          `[Job ${id}] fal.ai status check error:`,
+          `[Job ${id}] Status check error:`,
           statusErr instanceof Error ? statusErr.message : statusErr
         );
 
-        // Return the job with the error info so the frontend knows what happened
         return NextResponse.json({
           ...job,
           falStatusError:
