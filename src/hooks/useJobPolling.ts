@@ -26,10 +26,16 @@ export function useJobPolling(jobId: string | null) {
   const pollErrorCount = useRef(0);
   const startTimeRef = useRef<number>(0);
 
+  const elapsedRef = useRef<NodeJS.Timeout | null>(null);
+
   const clearPollTimeout = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
+    }
+    if (elapsedRef.current) {
+      clearInterval(elapsedRef.current);
+      elapsedRef.current = null;
     }
   }, []);
 
@@ -87,7 +93,6 @@ export function useJobPolling(jobId: string | null) {
     // Schedule next poll with backoff
     pollCountRef.current++;
     const nextInterval = getNextInterval(pollCountRef.current);
-    setElapsed(Math.round((Date.now() - startTimeRef.current) / 1000));
     timeoutRef.current = setTimeout(poll, nextInterval);
   }, [jobId, clearPollTimeout]);
 
@@ -97,6 +102,10 @@ export function useJobPolling(jobId: string | null) {
     pollCountRef.current = 0;
     pollErrorCount.current = 0;
     startTimeRef.current = Date.now();
+    // Tick elapsed every second so the UI timer is live
+    elapsedRef.current = setInterval(() => {
+      setElapsed(Math.round((Date.now() - startTimeRef.current) / 1000));
+    }, 1000);
     poll();
     return clearPollTimeout;
   }, [jobId, poll, clearPollTimeout]);

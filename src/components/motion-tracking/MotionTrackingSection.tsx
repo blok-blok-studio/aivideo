@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback } from "react";
 import FileUploadZone from "@/components/shared/FileUploadZone";
 import ModelCard from "@/components/shared/ModelCard";
 import { compressImage } from "@/lib/compress";
+import { compressVideo, CompressProgress } from "@/lib/compress-video";
 import GenerateButton from "@/components/shared/GenerateButton";
 import ResultDisplay from "@/components/shared/ResultDisplay";
 import {
@@ -126,6 +127,9 @@ export default function MotionTrackingSection() {
     setJobId(null);
     setErrorMessage(null);
 
+    const videoSizeMB = drivingVideo.size / 1024 / 1024;
+    const needsVideoCompress = videoSizeMB > 45; // Pixverse limit is 50MB, compress above 45MB for safety
+
     const initialLogs: StepLog[] = [
       { step: "load-sdk", status: "pending", detail: "Load fal.ai SDK" },
       {
@@ -133,10 +137,19 @@ export default function MotionTrackingSection() {
         status: "pending",
         detail: `Upload image (${(characterImage.size / 1024 / 1024).toFixed(1)}MB)`,
       },
+      ...(needsVideoCompress
+        ? [
+            {
+              step: "compress-video",
+              status: "pending" as const,
+              detail: `Compress video (${videoSizeMB.toFixed(1)}MB → under 45MB)`,
+            },
+          ]
+        : []),
       {
         step: "upload-video",
         status: "pending",
-        detail: `Upload video (${(drivingVideo.size / 1024 / 1024).toFixed(1)}MB)`,
+        detail: `Upload video (${videoSizeMB.toFixed(1)}MB)`,
       },
       { step: "submit-job", status: "pending", detail: "Submit to AI model" },
       { step: "process", status: "pending", detail: isSwapMode ? "Swap character" : "Generate video" },
@@ -215,7 +228,64 @@ export default function MotionTrackingSection() {
       });
       setStepLogs([...logs]);
 
-      // ─── Step 3: Upload driving video ───
+      // ─── Step 3a: Compress video if needed ───
+      let videoToUpload = drivingVideo;
+      if (needsVideoCompress) {
+        logs = updateLog(logs, "compress-video", { status: "running", detail: "Analyzing video…" });
+        setStepLogs([...logs]);
+        const startCompress = Date.now();
+
+        try {
+          videoToUpload = await compressVideo(drivingVideo, {
+            maxSizeBytes: 45 * 1024 * 1024,
+            maxHeight: 720,
+            onProgress: (progress: CompressProgress) => {
+              const phaseLabel =
+                progress.phase === "analyzing"
+                  ? "Analyzing video…"
+                  : progress.phase === "compressing"
+                  ? `Compressing… ${progress.percent}%`
+                  : "Finalizing…";
+              logs = updateLog(logs, "compress-video", {
+                status: "running",
+                detail: phaseLabel,
+              });
+              setStepLogs([...logs]);
+            },
+          });
+
+          const savedMB = (drivingVideo.size - videoToUpload.size) / 1024 / 1024;
+          const newSizeMB = videoToUpload.size / 1024 / 1024;
+          const wasCompressed = videoToUpload !== drivingVideo;
+
+          logs = updateLog(logs, "compress-video", {
+            status: "done",
+            time: Date.now() - startCompress,
+            detail: wasCompressed
+              ? `${videoSizeMB.toFixed(1)}MB → ${newSizeMB.toFixed(1)}MB (saved ${savedMB.toFixed(1)}MB)`
+              : `Already under limit (${videoSizeMB.toFixed(1)}MB)`,
+          });
+          setStepLogs([...logs]);
+
+          // Update the upload step to reflect new size
+          logs = updateLog(logs, "upload-video", {
+            detail: `Upload video (${newSizeMB.toFixed(1)}MB)`,
+          });
+          setStepLogs([...logs]);
+        } catch (compressErr) {
+          console.warn("[compress] Video compression failed, using original:", compressErr);
+          // Continue with original file — don't block the pipeline
+          logs = updateLog(logs, "compress-video", {
+            status: "done",
+            time: Date.now() - startCompress,
+            detail: `Compression unavailable — uploading original (${videoSizeMB.toFixed(1)}MB)`,
+          });
+          setStepLogs([...logs]);
+          videoToUpload = drivingVideo;
+        }
+      }
+
+      // ─── Step 3b: Upload driving video ───
       setProgressStep("uploading-video");
       logs = updateLog(logs, "upload-video", { status: "running" });
       setStepLogs([...logs]);
@@ -223,7 +293,7 @@ export default function MotionTrackingSection() {
 
       let videoUrl: string;
       try {
-        videoUrl = await falClient.storage.upload(drivingVideo);
+        videoUrl = await falClient.storage.upload(videoToUpload);
       } catch (vidErr: unknown) {
         let detail = "";
         if (vidErr && typeof vidErr === "object") {
@@ -605,6 +675,8 @@ export default function MotionTrackingSection() {
                 ? "Uploading video..."
                 : currentStep === "submitting"
                 ? "Submitting job..."
+                : stepLogs.find((l) => l.step === "compress-video" && l.status === "running")
+                ? "Compressing video..."
                 : isSwapMode
                 ? "Swapping..."
                 : "Generating..."

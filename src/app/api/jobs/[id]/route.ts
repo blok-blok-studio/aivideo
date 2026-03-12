@@ -49,11 +49,18 @@ export async function GET(
           outputUrl?.slice(0, 80)
         );
 
+        if (!outputUrl) {
+          console.error(
+            `[Job ${id}] No output URL found in result. Keys: ${Object.keys(data).join(", ")}. Full data: ${JSON.stringify(data).slice(0, 500)}`
+          );
+        }
+
         const updated = await prisma.job.update({
           where: { id: job.id },
           data: {
-            status: "complete",
+            status: outputUrl ? "complete" : "failed",
             outputUrl: outputUrl || null,
+            errorMsg: outputUrl ? null : "Completed but no output URL in result",
           },
         });
         return NextResponse.json(updated);
@@ -102,11 +109,11 @@ export async function GET(
         }
 
         if (statusStr === "FAILED") {
-          const logs = falStatus.logs;
+          // fal.ai returns errors in "error" field, with optional "logs" for details
           const errorDetail =
-            typeof logs === "string"
-              ? logs.slice(0, 500)
-              : "Generation failed on fal.ai";
+            (typeof falStatus.error === "string" && falStatus.error) ||
+            (typeof falStatus.logs === "string" && falStatus.logs.slice(0, 500)) ||
+            "Generation failed on fal.ai";
 
           const updated = await prisma.job.update({
             where: { id: job.id },
@@ -129,13 +136,18 @@ export async function GET(
           statusErr instanceof Error ? statusErr.message : statusErr
         );
 
-        return NextResponse.json({
-          ...job,
-          falStatusError:
-            statusErr instanceof Error
-              ? statusErr.message
-              : "Status check failed",
-        });
+        // Return 502 so the frontend's error counter increments and polling
+        // eventually stops instead of silently retrying for 10 minutes.
+        return NextResponse.json(
+          {
+            ...job,
+            falStatusError:
+              statusErr instanceof Error
+                ? statusErr.message
+                : "Status check failed",
+          },
+          { status: 502 }
+        );
       }
     }
 

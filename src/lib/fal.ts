@@ -9,6 +9,27 @@ fal.config({
 const FAL_TIMEOUT_MS = 8_000;
 
 /**
+ * Try to extract a human-readable error from a fal.ai error response body.
+ */
+function parseFalError(body: string): string {
+  try {
+    const parsed = JSON.parse(body);
+    // fal.ai validation errors: { detail: [{ msg: "..." }] }
+    if (Array.isArray(parsed.detail)) {
+      return parsed.detail.map((d: { msg?: string }) => d.msg || "").filter(Boolean).join("; ");
+    }
+    // fal.ai simple errors: { detail: "..." }
+    if (typeof parsed.detail === "string") return parsed.detail;
+    // Other shapes
+    if (parsed.message) return parsed.message;
+    if (parsed.error) return parsed.error;
+  } catch {
+    // not JSON
+  }
+  return body.slice(0, 200);
+}
+
+/**
  * Submit a job to fal.ai queue and return both request_id and response_url.
  */
 export async function submitFalJob(modelId: string, input: Record<string, unknown>) {
@@ -23,19 +44,11 @@ export async function submitFalJob(modelId: string, input: Record<string, unknow
 
 /**
  * Check fal.ai queue status using direct HTTP (with timeout).
- * The SDK's queue.status() doesn't support timeouts, which can hang
- * on Vercel's 10-second function limit.
  */
 export async function getFalStatus(modelId: string, requestId: string) {
   const apiKey = process.env.FAL_API_KEY;
 
-  // parseEndpointId logic: extract owner/alias (strip sub-path)
-  const parts = modelId.split("/");
-  const owner = parts[0];
-  const alias = parts[1];
-  const shortId = `${owner}/${alias}`;
-
-  const url = `https://queue.fal.run/${shortId}/requests/${requestId}/status?logs=1`;
+  const url = `https://queue.fal.run/${modelId}/requests/${requestId}/status?logs=1`;
 
   const response = await fetch(url, {
     method: "GET",
@@ -48,7 +61,7 @@ export async function getFalStatus(modelId: string, requestId: string) {
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`Status check failed: HTTP ${response.status} ${text.slice(0, 200)}`);
+    throw new Error(`Status check failed: HTTP ${response.status} ${parseFalError(text)}`);
   }
 
   return response.json();
@@ -57,6 +70,7 @@ export async function getFalStatus(modelId: string, requestId: string) {
 /**
  * Fetch the result of a completed fal.ai job.
  * Tries response_url first (most reliable), then SDK, then direct fetch.
+ * Surfaces the actual fal.ai error message on failure (not just "strategies failed").
  */
 export async function getFalResult(
   modelId: string,
@@ -64,6 +78,7 @@ export async function getFalResult(
   responseUrl?: string | null
 ) {
   const apiKey = process.env.FAL_API_KEY;
+  let lastError = "";
 
   // Strategy 1: Use response_url if available
   if (responseUrl) {
@@ -85,8 +100,18 @@ export async function getFalResult(
       }
 
       const text = await response.text().catch(() => "");
-      console.warn(`[getFalResult] Strategy 1 failed: HTTP ${response.status}: ${text.slice(0, 200)}`);
+      lastError = parseFalError(text);
+      console.warn(`[getFalResult] Strategy 1 failed: HTTP ${response.status}: ${lastError}`);
+
+      // If fal.ai returned a clear error (422, 400), don't bother with other strategies
+      if (response.status === 422 || response.status === 400) {
+        throw new Error(lastError || `HTTP ${response.status}`);
+      }
     } catch (err) {
+      if (err instanceof Error && !err.message.includes("strategies failed")) {
+        // Rethrow clear fal.ai errors (like file size limits)
+        if (lastError) throw err;
+      }
       console.warn(`[getFalResult] Strategy 1 error:`, err instanceof Error ? err.message : err);
     }
   }
@@ -99,7 +124,9 @@ export async function getFalResult(
     console.log(`[getFalResult] Strategy 2 succeeded`);
     return { data, requestId };
   } catch (err) {
-    console.warn(`[getFalResult] Strategy 2 error:`, err instanceof Error ? err.message : err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[getFalResult] Strategy 2 error:`, msg);
+    if (!lastError) lastError = msg;
   }
 
   // Strategy 3: Direct fetch with full model path
@@ -122,12 +149,15 @@ export async function getFalResult(
     }
 
     const text = await response.text().catch(() => "");
-    console.warn(`[getFalResult] Strategy 3 failed: HTTP ${response.status}: ${text.slice(0, 200)}`);
+    const parsed = parseFalError(text);
+    if (!lastError) lastError = parsed;
+    console.warn(`[getFalResult] Strategy 3 failed: HTTP ${response.status}: ${parsed}`);
   } catch (err) {
     console.warn(`[getFalResult] Strategy 3 error:`, err instanceof Error ? err.message : err);
   }
 
-  throw new Error(`All strategies failed to fetch result for request ${requestId}`);
+  // Use the actual fal.ai error message instead of generic "all strategies failed"
+  throw new Error(lastError || `Failed to fetch result for request ${requestId}`);
 }
 
 export { fal };
