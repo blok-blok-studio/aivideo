@@ -73,24 +73,66 @@ export async function submitFalJob(modelId: string, input: Record<string, unknow
 }
 
 /**
- * Check fal.ai queue status using direct HTTP (with timeout).
- * Prefers the status_url returned by fal.ai at submission time, since the
- * queue base path can differ from the submission endpoint (e.g. pixverse/swap
- * submits to fal-ai/pixverse/swap but queues under fal-ai/pixverse).
+ * Check fal.ai queue status.
+ *
+ * Strategy 1: Use the fal SDK's queue.status() with corrected queue model ID.
+ *   The SDK handles auth and URL construction internally.
+ *   For nested models (fal-ai/pixverse/swap), we pass the parent path (fal-ai/pixverse).
+ *
+ * Strategy 2: Direct HTTP to the saved status_url from submission.
+ *
+ * Strategy 3: Direct HTTP with manually-constructed URL using queue model ID.
  */
 export async function getFalStatus(modelId: string, requestId: string, statusUrl?: string | null) {
-  const apiKey = process.env.FAL_API_KEY;
-
-  // Use saved status_url first; fallback uses the queue model ID (parent path)
   const queueModelId = getQueueModelId(modelId);
-  const url = statusUrl
-    ? `${statusUrl}${statusUrl.includes("?") ? "&" : "?"}logs=1`
-    : `https://queue.fal.run/${queueModelId}/requests/${requestId}/status?logs=1`;
+  console.log(`[getFalStatus] modelId=${modelId} queueModelId=${queueModelId} requestId=${requestId} statusUrl=${statusUrl ? "PROVIDED" : "NOT PROVIDED"}`);
 
-  console.log(`[getFalStatus] url=${url}`);
-  console.log(`[getFalStatus] statusUrl=${statusUrl ? "PROVIDED" : "NOT PROVIDED"}, queueModelId=${queueModelId} (original: ${modelId})`);
+  // Strategy 1: SDK queue.status() — most reliable, handles URL construction internally
+  try {
+    console.log(`[getFalStatus] Strategy 1: SDK queue.status("${queueModelId}", { requestId: "${requestId}" })`);
+    const sdkResult = await fal.queue.status(queueModelId, {
+      requestId,
+      logs: true,
+    });
+    const data = sdkResult as unknown as Record<string, unknown>;
+    console.log(`[getFalStatus] Strategy 1 SUCCESS: status=${data.status} keys=${Object.keys(data).join(",")}`);
+    return data;
+  } catch (sdkErr) {
+    console.warn(`[getFalStatus] Strategy 1 failed:`, sdkErr instanceof Error ? sdkErr.message : sdkErr);
+  }
 
-  const response = await fetch(url, {
+  // Strategy 2: Direct HTTP to saved status_url
+  if (statusUrl) {
+    try {
+      const url = `${statusUrl}${statusUrl.includes("?") ? "&" : "?"}logs=1`;
+      console.log(`[getFalStatus] Strategy 2: ${url}`);
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Key ${process.env.FAL_API_KEY}`,
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(FAL_TIMEOUT_MS),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[getFalStatus] Strategy 2 SUCCESS: status=${data.status}`);
+        return data;
+      }
+      const text = await response.text().catch(() => "");
+      console.warn(`[getFalStatus] Strategy 2 failed: HTTP ${response.status} ${text.slice(0, 200)}`);
+    } catch (err) {
+      console.warn(`[getFalStatus] Strategy 2 error:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  // Strategy 3: Direct HTTP with corrected queue model ID
+  const apiKey = process.env.FAL_API_KEY;
+  const fallbackUrl = `https://queue.fal.run/${queueModelId}/requests/${requestId}/status?logs=1`;
+  console.log(`[getFalStatus] Strategy 3: ${fallbackUrl}`);
+
+  const response = await fetch(fallbackUrl, {
     method: "GET",
     headers: {
       Authorization: `Key ${apiKey}`,
@@ -99,16 +141,14 @@ export async function getFalStatus(modelId: string, requestId: string, statusUrl
     signal: AbortSignal.timeout(FAL_TIMEOUT_MS),
   });
 
-  console.log(`[getFalStatus] response: HTTP ${response.status}`);
-
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    console.error(`[getFalStatus] FAILED: HTTP ${response.status} body=${text.slice(0, 300)}`);
+    console.error(`[getFalStatus] ALL STRATEGIES FAILED. Last: HTTP ${response.status} body=${text.slice(0, 300)}`);
     throw new Error(`Status check failed: HTTP ${response.status} ${parseFalError(text)}`);
   }
 
   const data = await response.json();
-  console.log(`[getFalStatus] SUCCESS: status=${data.status} keys=${Object.keys(data).join(",")}`);
+  console.log(`[getFalStatus] Strategy 3 SUCCESS: status=${data.status}`);
   return data;
 }
 

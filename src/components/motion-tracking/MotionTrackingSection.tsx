@@ -44,6 +44,18 @@ export default function MotionTrackingSection() {
   const [trackingMode, setTrackingMode] = useState<TrackingMode>("motion-transfer");
   const isSwapMode = trackingMode === "character-swap";
 
+  // Reset shared job/pipeline state when switching modes so uploads and
+  // progress from one mode don't bleed into the other.
+  const handleModeSwitch = useCallback((mode: TrackingMode) => {
+    if (mode === trackingMode) return;
+    setTrackingMode(mode);
+    setJobId(null);
+    setLoading(false);
+    setProgressStep("idle");
+    setErrorMessage(null);
+    setStepLogs([]);
+  }, [trackingMode]);
+
   // Per-mode inputs — each mode has its own uploads so switching doesn't bleed state
   const [mtVideo, setMtVideo] = useState<File | null>(null);
   const [mtVideoPreview, setMtVideoPreview] = useState<string | null>(null);
@@ -489,7 +501,7 @@ export default function MotionTrackingSection() {
         ).map((mode) => (
           <button
             key={mode.key}
-            onClick={() => setTrackingMode(mode.key)}
+            onClick={() => handleModeSwitch(mode.key)}
             className={clsx(
               "flex-1 rounded-input px-2 py-2.5 text-center transition-all sm:px-4",
               trackingMode === mode.key

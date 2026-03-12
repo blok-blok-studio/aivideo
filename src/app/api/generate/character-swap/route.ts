@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     // Create job record
     const job = await prisma.job.create({
       data: {
-        section: "motion-tracking",
+        section: "character-swap",
         modelId: model_id,
         modelName: "Pixverse Swap",
         status: "queued",
