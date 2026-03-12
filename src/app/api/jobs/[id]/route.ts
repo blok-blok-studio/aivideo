@@ -27,9 +27,7 @@ export async function GET(
     // This is a separate state so we don't try status+result in one request
     // (which can exceed Vercel's 10s function timeout).
     if (job.status === "ready" && job.falRequestId) {
-      const responseUrl =
-        job.falResponseUrl ||
-        (job.inputParams as Record<string, unknown>)?._statusResponseUrl as string | undefined;
+      const responseUrl = job.falResponseUrl || null;
 
       try {
         const falResult = await getFalResult(

@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
           inputParams: {
             video_url,
             image_url,
-            _statusUrl: status_url || undefined,
+            _statusUrl: status_url || null,
           },
         },
       });

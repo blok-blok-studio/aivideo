@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
             character_orientation,
             prompt,
             keep_original_sound,
-            _statusUrl: status_url || undefined,
+            _statusUrl: status_url || null,
           },
         },
       });
