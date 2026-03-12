@@ -15,24 +15,42 @@ export interface CompressProgress {
   percent: number;
 }
 
+/**
+ * Returns true if the file is NOT already in a web-native video format
+ * (i.e. needs conversion from MOV, AVI, etc. to webm).
+ */
+function needsConversion(file: File): boolean {
+  const name = file.name.toLowerCase();
+  const webNative = [".mp4", ".webm"];
+  return !webNative.some((ext) => name.endsWith(ext));
+}
+
 export async function compressVideo(
   file: File,
   options: {
     maxSizeBytes?: number;
     maxHeight?: number;
+    forceConvert?: boolean;
     onProgress?: (progress: CompressProgress) => void;
   } = {}
 ): Promise<File> {
   const {
     maxSizeBytes = TARGET_MAX_SIZE,
     maxHeight = MAX_HEIGHT,
+    forceConvert = false,
     onProgress,
   } = options;
 
-  // Skip if already under limit
-  if (file.size <= maxSizeBytes) {
+  const mustConvert = forceConvert || needsConversion(file);
+
+  // Skip if already under limit AND doesn't need format conversion
+  if (file.size <= maxSizeBytes && !mustConvert) {
     return file;
   }
+
+  console.log(
+    `[compressVideo] Processing: size=${(file.size / 1024 / 1024).toFixed(1)}MB, needsConvert=${mustConvert}, name=${file.name}`
+  );
 
   onProgress?.({ phase: "analyzing", percent: 0 });
 

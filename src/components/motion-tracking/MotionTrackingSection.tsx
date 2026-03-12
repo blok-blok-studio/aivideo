@@ -128,7 +128,9 @@ export default function MotionTrackingSection() {
     setErrorMessage(null);
 
     const videoSizeMB = drivingVideo.size / 1024 / 1024;
-    const needsVideoCompress = videoSizeMB > 45; // Pixverse limit is 50MB, compress above 45MB for safety
+    const videoName = drivingVideo.name.toLowerCase();
+    const isNonMp4 = !videoName.endsWith(".mp4") && !videoName.endsWith(".webm");
+    const needsVideoCompress = videoSizeMB > 45 || isNonMp4; // Compress large files OR convert MOV/AVI/etc.
 
     const initialLogs: StepLog[] = [
       { step: "load-sdk", status: "pending", detail: "Load fal.ai SDK" },
@@ -142,7 +144,9 @@ export default function MotionTrackingSection() {
             {
               step: "compress-video",
               status: "pending" as const,
-              detail: `Compress video (${videoSizeMB.toFixed(1)}MB → under 45MB)`,
+              detail: isNonMp4
+                ? `Convert ${videoName.split(".").pop()?.toUpperCase() || "video"} → web format (${videoSizeMB.toFixed(1)}MB)`
+                : `Compress video (${videoSizeMB.toFixed(1)}MB → under 45MB)`,
             },
           ]
         : []),
@@ -239,6 +243,7 @@ export default function MotionTrackingSection() {
           videoToUpload = await compressVideo(drivingVideo, {
             maxSizeBytes: 45 * 1024 * 1024,
             maxHeight: 720,
+            forceConvert: isNonMp4,
             onProgress: (progress: CompressProgress) => {
               const phaseLabel =
                 progress.phase === "analyzing"
@@ -676,7 +681,7 @@ export default function MotionTrackingSection() {
                 : currentStep === "submitting"
                 ? "Submitting job..."
                 : stepLogs.find((l) => l.step === "compress-video" && l.status === "running")
-                ? "Compressing video..."
+                ? "Converting video..."
                 : isSwapMode
                 ? "Swapping..."
                 : "Generating..."
