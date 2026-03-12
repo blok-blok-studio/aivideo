@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Job, JobStatus, VoiceJobType } from "@/lib/types";
 
-const POLL_INITIAL_MS = 2000;
-const POLL_MAX_MS = 10000;
-const POLL_BACKOFF_FACTOR = 1.3;
+const POLL_INITIAL_MS = 1500;
+const POLL_MAX_MS = 5000;
+const POLL_BACKOFF_FACTOR = 1.2;
 const POLL_MAX_DURATION_MS = 10 * 60 * 1000; // 10 minutes
 const POLL_MAX_ERRORS = 20;
 
