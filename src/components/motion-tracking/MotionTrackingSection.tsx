@@ -44,11 +44,32 @@ export default function MotionTrackingSection() {
   const [trackingMode, setTrackingMode] = useState<TrackingMode>("motion-transfer");
   const isSwapMode = trackingMode === "character-swap";
 
-  // Inputs
-  const [drivingVideo, setDrivingVideo] = useState<File | null>(null);
-  const [drivingPreview, setDrivingPreview] = useState<string | null>(null);
-  const [characterImage, setCharacterImage] = useState<File | null>(null);
-  const [characterPreview, setCharacterPreview] = useState<string | null>(null);
+  // Per-mode inputs — each mode has its own uploads so switching doesn't bleed state
+  const [mtVideo, setMtVideo] = useState<File | null>(null);
+  const [mtVideoPreview, setMtVideoPreview] = useState<string | null>(null);
+  const [mtImage, setMtImage] = useState<File | null>(null);
+  const [mtImagePreview, setMtImagePreview] = useState<string | null>(null);
+  const [mtDuration, setMtDuration] = useState<number>(5);
+
+  const [csVideo, setCsVideo] = useState<File | null>(null);
+  const [csVideoPreview, setCsVideoPreview] = useState<string | null>(null);
+  const [csImage, setCsImage] = useState<File | null>(null);
+  const [csImagePreview, setCsImagePreview] = useState<string | null>(null);
+  const [csDuration, setCsDuration] = useState<number>(5);
+
+  // Active inputs based on current mode
+  const drivingVideo = isSwapMode ? csVideo : mtVideo;
+  const drivingPreview = isSwapMode ? csVideoPreview : mtVideoPreview;
+  const characterImage = isSwapMode ? csImage : mtImage;
+  const characterPreview = isSwapMode ? csImagePreview : mtImagePreview;
+  const videoDuration = isSwapMode ? csDuration : mtDuration;
+
+  const setDrivingVideo = isSwapMode ? setCsVideo : setMtVideo;
+  const setDrivingPreview = isSwapMode ? setCsVideoPreview : setMtVideoPreview;
+  const setCharacterImage = isSwapMode ? setCsImage : setMtImage;
+  const setCharacterPreview = isSwapMode ? setCsImagePreview : setMtImagePreview;
+  const setVideoDuration = isSwapMode ? setCsDuration : setMtDuration;
+
   const [orientation, setOrientation] = useState<CharacterOrientation>("image");
   const [prompt, setPrompt] = useState("");
   const [keepAudio, setKeepAudio] = useState(false);
@@ -58,7 +79,6 @@ export default function MotionTrackingSection() {
   const [selectedSwapModel, setSelectedSwapModel] = useState<CharacterSwapModel>(
     CHARACTER_SWAP_MODELS[0]
   );
-  const [videoDuration, setVideoDuration] = useState<number>(5);
 
   // Job state
   const [jobId, setJobId] = useState<string | null>(null);
@@ -104,7 +124,7 @@ export default function MotionTrackingSection() {
       URL.revokeObjectURL(video.src);
     };
     video.src = url;
-  }, []);
+  }, [setDrivingVideo, setDrivingPreview, setVideoDuration]);
 
   const handleCharacterImage = useCallback((file: File) => {
     setCharacterImage(file);
@@ -112,7 +132,7 @@ export default function MotionTrackingSection() {
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(file);
     });
-  }, []);
+  }, [setCharacterImage, setCharacterPreview]);
 
   // Helper to update a specific step log
   const updateLog = (
