@@ -79,8 +79,10 @@ export async function GET(
 
     // ── Job is "processing" = check fal.ai status ──
     if (job.status === "processing" && job.falRequestId) {
+      const statusUrl =
+        (job.inputParams as Record<string, unknown>)?._statusUrl as string | undefined;
       try {
-        const falStatus = await getFalStatus(job.modelId, job.falRequestId);
+        const falStatus = await getFalStatus(job.modelId, job.falRequestId, statusUrl);
         const statusStr = String(falStatus.status || "").toUpperCase();
 
         const statusResponseUrl = falStatus.response_url as string | undefined;

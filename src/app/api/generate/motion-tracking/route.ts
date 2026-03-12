@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     // Submit to fal.ai
     try {
-      const { request_id, response_url } = await submitFalJob(model_id, {
+      const { request_id, response_url, status_url } = await submitFalJob(model_id, {
         image_url,
         video_url,
         character_orientation,
@@ -46,6 +46,14 @@ export async function POST(req: NextRequest) {
           status: "processing",
           falRequestId: request_id,
           falResponseUrl: response_url || null,
+          inputParams: {
+            image_url,
+            video_url,
+            character_orientation,
+            prompt,
+            keep_original_sound,
+            _statusUrl: status_url || undefined,
+          },
         },
       });
     } catch (falErr) {

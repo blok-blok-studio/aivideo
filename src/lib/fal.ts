@@ -30,25 +30,37 @@ function parseFalError(body: string): string {
 }
 
 /**
- * Submit a job to fal.ai queue and return both request_id and response_url.
+ * Submit a job to fal.ai queue and return request_id, response_url, and status_url.
+ *
+ * IMPORTANT: fal.ai may return status/response URLs with a different base path than
+ * the submission endpoint. For example, submitting to "fal-ai/pixverse/swap" returns
+ * status URLs under "fal-ai/pixverse" (without /swap). Always use the returned URLs
+ * rather than constructing them from the model ID.
  */
 export async function submitFalJob(modelId: string, input: Record<string, unknown>) {
   const result = await fal.queue.submit(modelId, { input });
+  const raw = result as unknown as Record<string, unknown>;
   const request_id = result.request_id;
-  const response_url = (result as unknown as Record<string, unknown>).response_url as string | undefined;
+  const response_url = raw.response_url as string | undefined;
+  const status_url = raw.status_url as string | undefined;
 
-  console.log(`[submitFalJob] model=${modelId} request_id=${request_id} response_url=${response_url?.slice(0, 100)}`);
+  console.log(`[submitFalJob] model=${modelId} request_id=${request_id} response_url=${response_url?.slice(0, 100)} status_url=${status_url?.slice(0, 100)}`);
 
-  return { request_id, response_url };
+  return { request_id, response_url, status_url };
 }
 
 /**
  * Check fal.ai queue status using direct HTTP (with timeout).
+ * Prefers the status_url returned by fal.ai at submission time, since the
+ * queue base path can differ from the submission endpoint (e.g. pixverse/swap
+ * submits to fal-ai/pixverse/swap but queues under fal-ai/pixverse).
  */
-export async function getFalStatus(modelId: string, requestId: string) {
+export async function getFalStatus(modelId: string, requestId: string, statusUrl?: string | null) {
   const apiKey = process.env.FAL_API_KEY;
 
-  const url = `https://queue.fal.run/${modelId}/requests/${requestId}/status?logs=1`;
+  const url = statusUrl
+    ? `${statusUrl}${statusUrl.includes("?") ? "&" : "?"}logs=1`
+    : `https://queue.fal.run/${modelId}/requests/${requestId}/status?logs=1`;
 
   const response = await fetch(url, {
     method: "GET",

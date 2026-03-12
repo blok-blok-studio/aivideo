@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     // Submit to fal.ai — Pixverse Swap expects video + swap image
     try {
-      const { request_id, response_url } = await submitFalJob(model_id, {
+      const { request_id, response_url, status_url } = await submitFalJob(model_id, {
         video_url,
         image_url,
       });
@@ -39,6 +39,12 @@ export async function POST(req: NextRequest) {
           status: "processing",
           falRequestId: request_id,
           falResponseUrl: response_url || null,
+          // Store status_url in inputParams since there's no dedicated column
+          inputParams: {
+            video_url,
+            image_url,
+            _statusUrl: status_url || undefined,
+          },
         },
       });
     } catch (falErr) {
