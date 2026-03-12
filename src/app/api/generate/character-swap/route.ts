@@ -42,13 +42,20 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch (falErr) {
+      const errMsg = falErr instanceof Error ? falErr.message : "fal.ai submission failed";
+      console.error(`[character-swap] Submission failed for job ${job.id}:`, errMsg);
       await prisma.job.update({
         where: { id: job.id },
         data: {
           status: "failed",
-          errorMsg: falErr instanceof Error ? falErr.message : "fal.ai submission failed",
+          errorMsg: errMsg,
         },
       });
+      // Return error so frontend doesn't start polling a failed job
+      return NextResponse.json(
+        { error: `Submission failed: ${errMsg}`, jobId: job.id },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({ jobId: job.id });

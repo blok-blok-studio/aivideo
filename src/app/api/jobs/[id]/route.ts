@@ -151,6 +151,19 @@ export async function GET(
       }
     }
 
+    // Job is in "queued" state without a falRequestId — submission likely failed
+    // but DB update in catch block also failed. Mark it as failed to stop polling.
+    if (job.status === "queued" && !job.falRequestId) {
+      const updated = await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          status: "failed",
+          errorMsg: job.errorMsg || "Job submission did not complete",
+        },
+      });
+      return NextResponse.json(updated);
+    }
+
     return NextResponse.json(job);
   } catch (err) {
     return safeError(err, "Get job error");
