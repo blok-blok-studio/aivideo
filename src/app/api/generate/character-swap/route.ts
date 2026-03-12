@@ -27,11 +27,17 @@ export async function POST(req: NextRequest) {
     });
 
     // Submit to fal.ai — Pixverse Swap expects video + swap image
+    console.log(`[character-swap] STEP 1: Submitting job ${job.id} to fal.ai model=${model_id}`);
+    console.log(`[character-swap] STEP 1: video_url=${video_url.slice(0, 80)} image_url=${image_url.slice(0, 80)}`);
     try {
       const { request_id, response_url, status_url } = await submitFalJob(model_id, {
         video_url,
         image_url,
       });
+
+      console.log(`[character-swap] STEP 2: Submission succeeded. request_id=${request_id}`);
+      console.log(`[character-swap] STEP 2: response_url=${response_url?.slice(0, 120)}`);
+      console.log(`[character-swap] STEP 2: status_url=${status_url?.slice(0, 120)}`);
 
       await prisma.job.update({
         where: { id: job.id },
@@ -47,6 +53,8 @@ export async function POST(req: NextRequest) {
           },
         },
       });
+
+      console.log(`[character-swap] STEP 3: DB updated. job=${job.id} status=processing _statusUrl=${status_url ? "SET" : "MISSING"}`);
     } catch (falErr) {
       const errMsg = falErr instanceof Error ? falErr.message : "fal.ai submission failed";
       console.error(`[character-swap] Submission failed for job ${job.id}:`, errMsg);

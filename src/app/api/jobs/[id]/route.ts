@@ -79,8 +79,13 @@ export async function GET(
 
     // ── Job is "processing" = check fal.ai status ──
     if (job.status === "processing" && job.falRequestId) {
-      const statusUrl =
-        (job.inputParams as Record<string, unknown>)?._statusUrl as string | undefined;
+      const inputParams = job.inputParams as Record<string, unknown> | null;
+      const statusUrl = inputParams?._statusUrl as string | undefined;
+
+      console.log(`[Job ${id}] POLL: status=${job.status} modelId=${job.modelId} falRequestId=${job.falRequestId}`);
+      console.log(`[Job ${id}] POLL: _statusUrl=${statusUrl || "NOT SET"} falResponseUrl=${job.falResponseUrl?.slice(0, 80) || "NOT SET"}`);
+      console.log(`[Job ${id}] POLL: inputParams keys=${inputParams ? Object.keys(inputParams).join(",") : "null"}`);
+
       try {
         const falStatus = await getFalStatus(job.modelId, job.falRequestId, statusUrl);
         const statusStr = String(falStatus.status || "").toUpperCase();
@@ -88,8 +93,8 @@ export async function GET(
         const statusResponseUrl = falStatus.response_url as string | undefined;
 
         console.log(
-          `[Job ${id}] fal.ai: ${statusStr}`,
-          statusResponseUrl ? `url=${statusResponseUrl.slice(0, 80)}` : ""
+          `[Job ${id}] POLL RESULT: fal.ai status=${statusStr}`,
+          statusResponseUrl ? `response_url=${statusResponseUrl.slice(0, 80)}` : "no response_url"
         );
 
         if (statusStr === "COMPLETED") {

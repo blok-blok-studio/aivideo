@@ -62,6 +62,8 @@ export async function getFalStatus(modelId: string, requestId: string, statusUrl
     ? `${statusUrl}${statusUrl.includes("?") ? "&" : "?"}logs=1`
     : `https://queue.fal.run/${modelId}/requests/${requestId}/status?logs=1`;
 
+  console.log(`[getFalStatus] url=${url} (statusUrl ${statusUrl ? "PROVIDED" : "NOT PROVIDED, using modelId fallback"})`);
+
   const response = await fetch(url, {
     method: "GET",
     headers: {
@@ -71,12 +73,17 @@ export async function getFalStatus(modelId: string, requestId: string, statusUrl
     signal: AbortSignal.timeout(FAL_TIMEOUT_MS),
   });
 
+  console.log(`[getFalStatus] response: HTTP ${response.status}`);
+
   if (!response.ok) {
     const text = await response.text().catch(() => "");
+    console.error(`[getFalStatus] FAILED: HTTP ${response.status} body=${text.slice(0, 300)}`);
     throw new Error(`Status check failed: HTTP ${response.status} ${parseFalError(text)}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  console.log(`[getFalStatus] SUCCESS: status=${data.status} keys=${Object.keys(data).join(",")}`);
+  return data;
 }
 
 /**
