@@ -31,9 +31,12 @@ export async function POST(req: NextRequest) {
     // The standard result-fetching endpoint is broken for pixverse/swap
     // (nested model path causes the GET to re-run validation instead of
     // returning stored results).
-    const host = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    // Use the stable production URL (not deployment-specific URL which changes per deploy)
+    const host = process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     const webhookUrl = `${host}/api/fal/webhook`;
 
     console.log(`[character-swap] STEP 1: Submitting job ${job.id} to fal.ai model=${model_id}`);

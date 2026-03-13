@@ -4,25 +4,34 @@ import { prisma } from "@/lib/db";
 /**
  * fal.ai webhook endpoint — receives job results directly from fal.ai.
  *
+ * Webhook payload format (from fal.ai docs):
+ * {
+ *   "request_id": "abc123",
+ *   "gateway_request_id": "abc123",
+ *   "status": "OK" | "ERROR",
+ *   "payload": { ... model output ... }
+ * }
+ *
+ * For pixverse/swap, payload is: { video: { url: "..." } }
+ *
  * This is critical for models like pixverse/swap where the standard
  * result-fetching endpoint (GET response_url) is broken due to nested
  * model path routing issues on fal.ai's platform.
- *
- * fal.ai POSTs the result here when the job completes, bypassing the
- * broken result endpoint entirely.
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const requestId = body.request_id as string | undefined;
+    const requestId = (body.request_id || body.gateway_request_id) as string | undefined;
 
-    console.log(`[fal-webhook] Received webhook. request_id=${requestId || "MISSING"}`);
-    console.log(`[fal-webhook] Body keys: ${Object.keys(body).join(", ")}`);
-    console.log(`[fal-webhook] Status: ${body.status || "N/A"}`);
+    console.log(`[fal-webhook] Received webhook`);
+    console.log(`[fal-webhook] request_id=${requestId || "MISSING"}`);
+    console.log(`[fal-webhook] status=${body.status || "N/A"}`);
+    console.log(`[fal-webhook] body keys=${Object.keys(body).join(", ")}`);
 
     if (!requestId) {
       console.error("[fal-webhook] No request_id in webhook payload");
-      return NextResponse.json({ error: "Missing request_id" }, { status: 400 });
+      // Return 200 anyway to prevent fal.ai from retrying
+      return NextResponse.json({ error: "Missing request_id" }, { status: 200 });
     }
 
     // Find the job by fal request ID
@@ -31,56 +40,76 @@ export async function POST(req: NextRequest) {
     });
 
     if (!job) {
-      console.warn(`[fal-webhook] No job found for request_id=${requestId}`);
-      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+      // Also try gateway_request_id if request_id didn't match
+      const altId = body.gateway_request_id || body.request_id;
+      const altJob = altId && altId !== requestId
+        ? await prisma.job.findFirst({ where: { falRequestId: altId } })
+        : null;
+
+      if (!altJob) {
+        console.warn(`[fal-webhook] No job found for request_id=${requestId}`);
+        return NextResponse.json({ ok: true }); // 200 to stop retries
+      }
     }
 
-    console.log(`[fal-webhook] Found job ${job.id} (status=${job.status})`);
+    const matchedJob = job || (await prisma.job.findFirst({ where: { falRequestId: body.gateway_request_id } }));
+    if (!matchedJob) {
+      console.warn(`[fal-webhook] No job found for any ID`);
+      return NextResponse.json({ ok: true });
+    }
 
-    // Check for errors in the payload
-    const error = body.error as string | undefined;
-    const payload = body.payload || body;
+    console.log(`[fal-webhook] Found job ${matchedJob.id} (current status=${matchedJob.status})`);
 
-    if (error || body.status === "FAILED") {
-      console.error(`[fal-webhook] Job ${job.id} failed:`, error || "Unknown error");
+    // Check for errors — fal.ai uses status: "ERROR" for failures
+    if (body.status === "ERROR" || body.status === "FAILED") {
+      const errorDetail =
+        body.payload?.detail?.[0]?.msg ||
+        body.payload?.error ||
+        body.error ||
+        "Generation failed on fal.ai";
+
+      console.error(`[fal-webhook] Job ${matchedJob.id} FAILED: ${errorDetail}`);
       await prisma.job.update({
-        where: { id: job.id },
+        where: { id: matchedJob.id },
         data: {
           status: "failed",
-          errorMsg: error || "Generation failed on fal.ai",
+          errorMsg: typeof errorDetail === "string" ? errorDetail : JSON.stringify(errorDetail).slice(0, 500),
         },
       });
       return NextResponse.json({ ok: true });
     }
 
-    // Extract video URL from result
-    // Pixverse swap returns: { video: { url: "..." } }
-    const video = (payload.video || body.video) as { url?: string } | undefined;
+    // Extract video URL from payload
+    // Webhook format: { status: "OK", payload: { video: { url: "..." } } }
+    const payload = body.payload || {};
+
+    console.log(`[fal-webhook] payload keys=${Object.keys(payload).join(", ")}`);
+    console.log(`[fal-webhook] payload preview=${JSON.stringify(payload).slice(0, 300)}`);
+
+    const video = payload.video as { url?: string } | undefined;
     const outputUrl =
       video?.url ||
       (payload.output as { url?: string })?.url ||
-      (body.output as { url?: string })?.url;
-
-    console.log(`[fal-webhook] Job ${job.id} output URL: ${outputUrl?.slice(0, 100) || "NOT FOUND"}`);
-    console.log(`[fal-webhook] Payload keys: ${Object.keys(payload).join(", ")}`);
+      // Sometimes the payload IS the direct output
+      (body.video as { url?: string })?.url;
 
     if (outputUrl) {
+      console.log(`[fal-webhook] Job ${matchedJob.id} COMPLETE: ${outputUrl.slice(0, 120)}`);
       await prisma.job.update({
-        where: { id: job.id },
+        where: { id: matchedJob.id },
         data: {
           status: "complete",
           outputUrl,
         },
       });
-      console.log(`[fal-webhook] Job ${job.id} marked complete with output`);
     } else {
-      // Log full payload for debugging
-      console.error(`[fal-webhook] No output URL found. Full payload: ${JSON.stringify(body).slice(0, 1000)}`);
+      // Log full payload for debugging — could be a different output format
+      console.error(`[fal-webhook] No output URL found. Full body: ${JSON.stringify(body).slice(0, 1000)}`);
       await prisma.job.update({
-        where: { id: job.id },
+        where: { id: matchedJob.id },
         data: {
           status: "failed",
-          errorMsg: "Webhook received but no output URL in result",
+          errorMsg: `Webhook received but no output URL. Keys: ${Object.keys(payload).join(", ")}`,
         },
       });
     }
@@ -88,9 +117,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[fal-webhook] Error:", err);
-    return NextResponse.json(
-      { error: "Webhook processing failed" },
-      { status: 500 }
-    );
+    // Return 200 to prevent fal.ai from retrying on our errors
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 200 });
   }
 }
