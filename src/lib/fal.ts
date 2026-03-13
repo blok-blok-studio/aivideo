@@ -55,11 +55,17 @@ function getQueueModelId(modelId: string): string {
  * status URLs under "fal-ai/pixverse" (without /swap). Always use the returned URLs
  * rather than constructing them from the model ID.
  */
-export async function submitFalJob(modelId: string, input: Record<string, unknown>) {
-  const result = await fal.queue.submit(modelId, { input });
+export async function submitFalJob(
+  modelId: string,
+  input: Record<string, unknown>,
+  options?: { webhookUrl?: string }
+) {
+  const result = await fal.queue.submit(modelId, {
+    input,
+    webhookUrl: options?.webhookUrl,
+  });
 
   // The SDK types guarantee these fields exist on InQueueQueueStatus.
-  // Access them directly — no need to cast through unknown.
   const request_id = result.request_id;
   const response_url = result.response_url;
   const status_url = result.status_url;
@@ -67,7 +73,7 @@ export async function submitFalJob(modelId: string, input: Record<string, unknow
   console.log(`[submitFalJob] model=${modelId} request_id=${request_id}`);
   console.log(`[submitFalJob] response_url=${response_url || "MISSING"}`);
   console.log(`[submitFalJob] status_url=${status_url || "MISSING"}`);
-  console.log(`[submitFalJob] full result keys=${Object.keys(result).join(",")}`);
+  console.log(`[submitFalJob] webhookUrl=${options?.webhookUrl || "NONE"}`);
 
   return { request_id, response_url, status_url };
 }
@@ -88,11 +94,13 @@ export async function getFalStatus(modelId: string, requestId: string, statusUrl
   console.log(`[getFalStatus] modelId=${modelId} queueModelId=${queueModelId} requestId=${requestId} statusUrl=${statusUrl ? "PROVIDED" : "NOT PROVIDED"}`);
 
   // Strategy 1: SDK queue.status() — most reliable, handles URL construction internally
+  // Must have a timeout so we don't exceed Vercel's 10s function limit
   try {
     console.log(`[getFalStatus] Strategy 1: SDK queue.status("${queueModelId}", { requestId: "${requestId}" })`);
     const sdkResult = await fal.queue.status(queueModelId, {
       requestId,
       logs: true,
+      abortSignal: AbortSignal.timeout(FAL_TIMEOUT_MS),
     });
     const data = sdkResult as unknown as Record<string, unknown>;
     console.log(`[getFalStatus] Strategy 1 SUCCESS: status=${data.status} keys=${Object.keys(data).join(",")}`);

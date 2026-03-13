@@ -4,6 +4,13 @@ import { getFalResult, getFalStatus } from "@/lib/fal";
 import { validateBody, safeError } from "@/lib/api-helpers";
 import { idParamSchema } from "@/lib/validation";
 
+// Models whose result-fetching endpoint is broken on fal.ai
+// (nested model paths cause the GET to re-run validation instead
+// of returning stored results). These models use webhooks instead.
+const WEBHOOK_MODELS = new Set([
+  "fal-ai/pixverse/swap",
+]);
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -23,12 +30,24 @@ export async function GET(
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    // ── Job is "ready" = status COMPLETED on fal.ai, now fetch the result ──
-    // This is a separate state so we don't try status+result in one request
-    // (which can exceed Vercel's 10s function timeout).
-    if (job.status === "ready" && job.falRequestId) {
-      const responseUrl = job.falResponseUrl || null;
+    const usesWebhook = WEBHOOK_MODELS.has(job.modelId);
 
+    // ── Job is "ready" = status COMPLETED on fal.ai, now fetch the result ──
+    // For webhook models, skip direct result fetching — the webhook will
+    // update the job to "complete" with the output URL.
+    if (job.status === "ready" && job.falRequestId) {
+      if (usesWebhook) {
+        // Webhook hasn't delivered yet. Tell frontend to keep polling.
+        console.log(`[Job ${id}] READY (webhook model) — waiting for webhook delivery`);
+        return NextResponse.json({
+          ...job,
+          status: "processing",
+          falStatus: "COMPLETED — waiting for result delivery…",
+        });
+      }
+
+      // Non-webhook models: fetch result directly
+      const responseUrl = job.falResponseUrl || null;
       try {
         const falResult = await getFalResult(
           job.modelId,
@@ -81,8 +100,7 @@ export async function GET(
       const statusUrl = inputParams?._statusUrl as string | undefined;
 
       console.log(`[Job ${id}] POLL: status=${job.status} modelId=${job.modelId} falRequestId=${job.falRequestId}`);
-      console.log(`[Job ${id}] POLL: _statusUrl=${statusUrl || "NOT SET"} falResponseUrl=${job.falResponseUrl?.slice(0, 80) || "NOT SET"}`);
-      console.log(`[Job ${id}] POLL: inputParams keys=${inputParams ? Object.keys(inputParams).join(",") : "null"}`);
+      console.log(`[Job ${id}] POLL: _statusUrl=${statusUrl || "NOT SET"} webhook=${usesWebhook ? "YES" : "NO"}`);
 
       try {
         const falStatus = await getFalStatus(job.modelId, job.falRequestId, statusUrl);
@@ -96,8 +114,26 @@ export async function GET(
         );
 
         if (statusStr === "COMPLETED") {
-          // Mark as "ready" so the NEXT poll fetches the result.
-          // This prevents status+result from running in one 10s window.
+          if (usesWebhook) {
+            // For webhook models, mark as "ready" and wait for webhook.
+            // The webhook POST to /api/fal/webhook will update the job
+            // to "complete" with the output URL.
+            await prisma.job.update({
+              where: { id: job.id },
+              data: {
+                status: "ready",
+                falResponseUrl: statusResponseUrl || job.falResponseUrl || null,
+              },
+            });
+            console.log(`[Job ${id}] COMPLETED (webhook model) — marked ready, waiting for webhook`);
+            return NextResponse.json({
+              ...job,
+              status: "processing",
+              falStatus: "COMPLETED — waiting for result delivery…",
+            });
+          }
+
+          // Non-webhook: mark as "ready" so the NEXT poll fetches the result
           const updated = await prisma.job.update({
             where: { id: job.id },
             data: {
@@ -105,7 +141,6 @@ export async function GET(
               falResponseUrl: statusResponseUrl || job.falResponseUrl || null,
             },
           });
-          // Return as still processing so frontend keeps polling
           return NextResponse.json({
             ...updated,
             status: "processing",
@@ -114,7 +149,6 @@ export async function GET(
         }
 
         if (statusStr === "FAILED") {
-          // fal.ai returns errors in "error" field, with optional "logs" for details
           const errorDetail =
             (typeof falStatus.error === "string" && falStatus.error) ||
             (typeof falStatus.logs === "string" && falStatus.logs.slice(0, 500)) ||
@@ -141,8 +175,6 @@ export async function GET(
           statusErr instanceof Error ? statusErr.message : statusErr
         );
 
-        // Return 502 so the frontend's error counter increments and polling
-        // eventually stops instead of silently retrying for 10 minutes.
         return NextResponse.json(
           {
             ...job,
@@ -157,7 +189,6 @@ export async function GET(
     }
 
     // Job is in "queued" state without a falRequestId — submission likely failed
-    // but DB update in catch block also failed. Mark it as failed to stop polling.
     if (job.status === "queued" && !job.falRequestId) {
       const updated = await prisma.job.update({
         where: { id: job.id },

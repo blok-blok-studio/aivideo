@@ -27,13 +27,24 @@ export async function POST(req: NextRequest) {
     });
 
     // Submit to fal.ai — Pixverse Swap expects video + swap image
+    // Use a webhook so fal.ai POSTs the result directly to our server.
+    // The standard result-fetching endpoint is broken for pixverse/swap
+    // (nested model path causes the GET to re-run validation instead of
+    // returning stored results).
+    const host = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const webhookUrl = `${host}/api/fal/webhook`;
+
     console.log(`[character-swap] STEP 1: Submitting job ${job.id} to fal.ai model=${model_id}`);
     console.log(`[character-swap] STEP 1: video_url=${video_url.slice(0, 80)} image_url=${image_url.slice(0, 80)}`);
+    console.log(`[character-swap] STEP 1: webhookUrl=${webhookUrl}`);
     try {
-      const { request_id, response_url, status_url } = await submitFalJob(model_id, {
-        video_url,
-        image_url,
-      });
+      const { request_id, response_url, status_url } = await submitFalJob(
+        model_id,
+        { video_url, image_url },
+        { webhookUrl }
+      );
 
       console.log(`[character-swap] STEP 2: Submission succeeded. request_id=${request_id}`);
       console.log(`[character-swap] STEP 2: response_url=${response_url?.slice(0, 120)}`);
